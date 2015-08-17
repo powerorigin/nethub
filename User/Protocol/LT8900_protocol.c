@@ -87,6 +87,7 @@ void LT_init()
 void LT_TxData()
 {
 	u8 i;
+	u16 time = 20000;
 	
 	Lt8900_Txdata[5] = crc8_check(Lt8900_Txdata,5);
 	LT_writereg(7,0x00,0x00);	
@@ -102,9 +103,9 @@ void LT_TxData()
 	SS_H();
 	LT_writereg(7,0x01,0x00);			 			//发送模式
 	
-  while(READ_PKT==0);
+  while(READ_PKT==0&&time--);
 	
-	delay_us(1000);	
+	delay_us(2000);	
 	LT_writereg(52,0x80,0x80);
 	LT_writereg(7,0x00,0x80);					    //接收模式
 }
@@ -116,33 +117,34 @@ void LT_RxData()
 	if(READ_PKT)	
 	{
 		SS_L();
-		SPI_write_byte(0x80+50);
+		SPI_write_byte(0x80+50);           
 		data_len = SPI_write_byte(0xff);
 		for(i=0;i<data_len;i++)
 		{
 				Lt8900_Rxdata[i] = SPI_write_byte(0xff); 			    
 		}	
     SS_H();
-		if(Lt8900_Rxdata[0] == LT8900_DATA && Lt8900_Rxdata[5] == crc8_check(Lt8900_Rxdata,5))
+		if(Lt8900_Rxdata[0] == LT8900_DATA && Lt8900_Rxdata[data_len-2] == crc8_check(Lt8900_Rxdata,data_len-2))
 		{
 			  if(Lt8900_Rxdata[CMD] == 0x01)
 			 	{
 						for(i=0;i<MAX_DEVICE_NUMBER;i++)
 						{
-								 	if(rf_device_list[i][CLASS] == 0 || rf_device_list[i][ID] == Lt8900_Rxdata[ID])
+								 	if(rf_device_list[i][CLASS] == 0 || rf_device_list[i][ID] == Lt8900_Rxdata[ID]|| (rf_device_list[i][ID] == Lt8900_Rxdata[ID]&&rf_device_list[i][CLASS] == Lt8900_Rxdata[CLASS]))
 									   break;
 					  }
-					 if(rf_device_list[i][CLASS] == 0)
+					 if(rf_device_list[i][CLASS] == 0 || rf_device_list[i][ID] == 0)
 					 {
 									 rf_device_list[i][CLASS] = Lt8900_Rxdata[CLASS];
 									 rf_device_list[i][ID] = Lt8900_Rxdata[ID];			
 									 AT24CXX_Write(AT24CXX_DEVICE_LIST_ADDR,(u8 *)rf_device_list,sizeof(rf_device_list));									 
 								//	 rf_device_list[i][LIST_STATE] = 1;
 				   }
+					 else Lt8900_Rxdata[ID] = 0;
 				}
-				memcpy(&m_m2w_mcuStatus.status_w,&Lt8900_Rxdata[0],6);
-				ReportStatus(REPORT_STATUS);
 		}
+		memcpy(&m_m2w_mcuStatus.status_w,&Lt8900_Rxdata[0],6);
+		ReportStatus(REPORT_STATUS);
 		LT_writereg(7,0x00,0x00);	
 		LT_writereg(52,0x80,0x80);
 		LT_writereg(7,0x00,0x80);	

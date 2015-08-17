@@ -51,16 +51,17 @@ void Rf_Send_Process(uint8_t *data)
 {
 //	uint8_t str[20] = {'\0'};
   uint8_t i;
-
-//	memcpy(str,data,5);
+	
 	Push(&rf_send_queue, data);
-	if(rf_send_event->OSEventCnt == 0)
-    {
+
+	if(rf_send_event->OSEventCnt == 0 && rf_send_event->OSEventType == 0x03)
+  {
 		OSSemPost(rf_send_event);
 	}
 	else
 	{
 		rf_send_event->OSEventCnt = 0;
+		rf_send_event->OSEventType = 0x03;
 		OSSemPost(rf_send_event);
 	}
 	
@@ -78,22 +79,25 @@ void Rf_Send_Process(uint8_t *data)
 void Host_Search_Device_Cmd(uint8_t *data)
 {
      uint8_t	i,j;
-   memcpy(&timer_tab.timermin,&data[4],6);	
+   memcpy(&timer_tab.timermin,&data[3],6);	
 	 Set_Timer();
 	 memcpy(&m_m2w_mcuStatus.status_w,data,3);
+	 memset(&m_m2w_mcuStatus.status_w.device_data,0,sizeof(m_m2w_mcuStatus.status_w.device_data));
 	 j = 0;
 	 for(i=0;i<MAX_DEVICE_NUMBER;i++)
 	 {
-		 if(rf_device_list[i][CLASS] == 0)
+		 if(rf_device_list[i][CLASS] == 0 || rf_device_list[i][ID] == 0)
 			break; 
 		 if((i+1)%4 == 0)
 		{
 			j++;
 			memcpy(&m_m2w_mcuStatus.status_w.device_data[1],&rf_device_list[4*j-4],8);
-			ReportStatus(REPORT_STATUS);								
+			ReportStatus(REPORT_STATUS);					
+			memset(&m_m2w_mcuStatus.status_w.device_data,0,sizeof(m_m2w_mcuStatus.status_w.device_data));			
 		}
-	 }	
-	 memcpy(&m_m2w_mcuStatus.status_w.device_data[1],&rf_device_list[4*j],(MAX_DEVICE_NUMBER-4*j)*2);
+	 }
+	 m_m2w_mcuStatus.status_w.device_cmd = 0x06;                                              //ËÑË÷½áÊøÃüÁî
+	 memcpy(&m_m2w_mcuStatus.status_w.device_data[1],&rf_device_list[4*j],(i%4)*2);
 	 ReportStatus(REPORT_STATUS);
 }
 /*******************************************************************************
@@ -107,27 +111,36 @@ void Host_Search_Device_Cmd(uint8_t *data)
 void Host_Delete_Device_Cmd(uint8_t *data)
 {
 	uint8_t	i,j;
+  OS_CPU_SR  cpu_sr;
 
+
+    OS_ENTER_CRITICAL();                         /* Tell uC/OS-II that we are starting an ISR          */
+    
 	 for(i=0;i<MAX_DEVICE_NUMBER;i++)
 	{
-		if(rf_device_list[i][CLASS] == data[4]&&rf_device_list[i][ID] == data[5])
+		if((rf_device_list[i][CLASS] == data[4]&&rf_device_list[i][ID] == data[5])|| rf_device_list[i][CLASS] == 0 || rf_device_list[i][ID] == 0)
 		{
 			break;
 		}
 	}
 	for(j=0;j<MAX_DEVICE_NUMBER;j++)
 	{
-		if(rf_device_list[j][CLASS] == 0)
+		if(rf_device_list[j][CLASS] == 0 || rf_device_list[j][ID] == 0)
 			break;
 	}
-	for(;i<j;i++)
-	{
-		memcpy(&rf_device_list[i],&rf_device_list[i+1],2);	
-	}
-	memset(&rf_device_list[i],0,2);
+	if(rf_device_list[i][CLASS] != 0 && rf_device_list[i][ID] != 0)
+	{	
+	  for(;i<j;i++)
+		{
+			memcpy(&rf_device_list[i],&rf_device_list[i+1],2);	
+		}
+		memset(&rf_device_list[j],0,(MAX_DEVICE_NUMBER-j)*2);
+		AT24CXX_Write(AT24CXX_DEVICE_LIST_ADDR,(u8 *)rf_device_list,sizeof(rf_device_list));
+	}	
+	OS_EXIT_CRITICAL();
 	memcpy(&m_m2w_mcuStatus.status_w,data,6);
 	ReportStatus(REPORT_STATUS);
-	AT24CXX_Write(AT24CXX_DEVICE_LIST_ADDR,(u8 *)rf_device_list,sizeof(rf_device_list));
+	//sizeof(rf_device_list)
 }
 
 /*******************************************************************************
@@ -156,7 +169,6 @@ void Host_Back_State_Cmd(uint8_t *data)
 
 void Host_Configuration(uint8_t *data)
 { 	
-
 	    switch(data[CMD])
 		{
 			case   HOST_SEARCH_CMD:	  
@@ -186,7 +198,7 @@ void Rf_Heart_package(void)
 	
 	for(i=0;i<MAX_DEVICE_NUMBER;i++)
 	{
-		if(rf_device_list[i][CLASS] == RF_DATA )
+		if(rf_device_list[i][CLASS] == RF_DATA && rf_device_list[i][ID] != 0)
 		{
 		   str[0] = rf_device_list[i][CLASS];
 			 str[1] = rf_device_list[i][ID];
@@ -212,19 +224,22 @@ void Rf_Heart_package(void)
 void Rf_Receive_Process(void)
 {
 	uint8_t	i;
+	OS_CPU_SR  cpu_sr;
+    
 	 if(memcmp(m_rf_send.data,m_rf_receive.data,3) == 0)
 	 {
 	   rf_inquire_flag = RF_INQUIRE_SUCCESS;
+		  OS_ENTER_CRITICAL();  
 		 switch(m_rf_receive.data[0])
 		 {
 		     case   RF_DATA: if(m_rf_receive.data[ID] != 0x00&&m_rf_receive.data[CMD] == RF_SET_CMD)
 			 				{
 								 for(i=0;i<MAX_DEVICE_NUMBER;i++)
 								 {
-								 	if(rf_device_list[i][CLASS] == 0 || rf_device_list[i][ID] == m_rf_receive.data[ID])
+								 	if(rf_device_list[i][CLASS] == 0 || rf_device_list[i][ID] == 0|| (rf_device_list[i][ID] == m_rf_receive.data[ID]&&rf_device_list[i][CLASS] == m_rf_receive.data[CLASS]))
 									   break;
 								 }
-								 if(rf_device_list[i][CLASS] == 0)
+								 if(rf_device_list[i][CLASS] == 0 || rf_device_list[i][ID] == 0)
 								 {
 									 rf_device_list[i][CLASS] = m_rf_receive.data[CLASS];
 									 rf_device_list[i][ID] = m_rf_receive.data[ID];			
@@ -236,6 +251,7 @@ void Rf_Receive_Process(void)
 							break;
 		   default  : break;
 		 }
+		OS_EXIT_CRITICAL();
 		memcpy(&m_m2w_mcuStatus.status_w,&m_rf_receive.data[0],12);
 		ReportStatus(REPORT_STATUS);
 		OSTimeDlyHMSM(0,0,0,250); 	//µÈ´ý200ms·´À¡

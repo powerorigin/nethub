@@ -20,6 +20,7 @@ rf_send	   m_rf_send;
 rf_receive m_rf_receive;
 
 extern m2w_mcuStatus							m_m2w_mcuStatus;
+extern OS_EVENT  *message_event,*rf_receive_event;
 uint8_t	  rf_state;
 uint8_t  send_num = 0;
 u8 const Rf_code[10][3] = {0xfb,0xff,0x6f,
@@ -186,8 +187,7 @@ u8 Send_Byte(u8 send_data_len, u8 remote_control_flag, u8 send_frequency)
 			TIM_SetCounter(TIM2,65536 - A4);
 			TIM_Cmd(TIM2, ENABLE); 
 	
-			OSTimeDlyHMSM(0,0,0,500); 	//等待500ms反馈
-																																		     
+			OSTimeDlyHMSM(0,0,0,600); 	//等待700ms反馈																															     
 			send_num++; 
 	    if(rf_inquire_flag == RF_INQUIRE_SUCCESS)
 			{
@@ -195,7 +195,7 @@ u8 Send_Byte(u8 send_data_len, u8 remote_control_flag, u8 send_frequency)
 
 			    break;
 			}				
-				 
+			 
 		}
 		if(rf_inquire_flag != 0)
 		{
@@ -252,6 +252,19 @@ void Rf_Receive(void)
 			   }
 			   else TIM_Cmd(TIM4, DISABLE);	
 		 }
+	 }
+	 else if(rf_state == RF_RECEIVE_FINSH)
+	 {
+				if(rf_receive_event->OSEventCnt == 0 && rf_receive_event->OSEventType == 0x03)
+				{
+							OSSemPost(rf_receive_event);
+				}
+				else
+				{
+						  rf_receive_event->OSEventCnt = 0;
+							rf_receive_event->OSEventType = 0x03;
+							OSSemPost(rf_receive_event);
+				}
 	 }
 }
 /*	

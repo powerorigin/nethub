@@ -1,6 +1,7 @@
 #include "24cxx.h" 
 #include "ucos_ii.h"
 
+extern void delay_us(uint32_t nus);
 //初始化IIC接口
 void AT24CXX_Init(void)
 {
@@ -61,7 +62,8 @@ void AT24CXX_WriteOneByte(u16 WriteAddr,u8 DataToWrite)
 	IIC_Send_Byte(DataToWrite);     //发送字节							   
 	IIC_Wait_Ack();  		    	   
     IIC_Stop();//产生一个停止条件 
-	OSTimeDlyHMSM(0,0,0,10); 	//1s延时，释放CPU控制权
+//	OSTimeDlyHMSM(0,0,0,10); 	//1s延时，释放CPU控制权
+	delay_us(10000);
 	AT24CXX_CS = 1;
 //	delay_ms(10);	 
 }
@@ -104,7 +106,7 @@ u8 AT24CXX_Check(void)
 {
 	u8 temp,i;
 	temp=AT24CXX_ReadOneByte(255);//避免每次开机都写AT24CXX			   
-	if(temp==0X55)return 0;		   
+	if(temp ==0X55)return 0;		   
 	else//排除第一次初始化的情况
 	{
 		AT24CXX_WriteOneByte(255,0X55);

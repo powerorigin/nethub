@@ -72,6 +72,7 @@ extern uint8_t	  rf_state;
 			   
 #define RF_RECEIVE_STATE           0x01
 #define RF_SEND_STATE              0x02
+#define RF_RECEIVE_FINSH           0x03 
 
 void RF_Init(void);
 //void Wireless_control(uint8_t *data);

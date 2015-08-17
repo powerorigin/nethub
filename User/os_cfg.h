@@ -36,7 +36,7 @@
 #define OS_EVENT_MULTI_EN         0    /* Include code for OSEventPendMulti()                          */
 #define OS_EVENT_NAME_SIZE       16    /* Determine the size of the name of a Sem, Mutex, Mbox or Q    */
 
-#define OS_LOWEST_PRIO           60    /* Defines the lowest priority that can be assigned ...         */
+#define OS_LOWEST_PRIO           24    /* Defines the lowest priority that can be assigned ...         */
                                        /* ... MUST NEVER be higher than 254!                           */
 
 #define OS_MAX_EVENTS            20    /* Max. number of event control blocks in your application      */
@@ -54,7 +54,7 @@
                                        /* --------------------- TASK STACK SIZE ---------------------- */
 #define OS_TASK_TMR_STK_SIZE    128    /* Timer      task stack size (# of OS_STK wide entries)        */
 #define OS_TASK_STAT_STK_SIZE   128    /* Statistics task stack size (# of OS_STK wide entries)        */
-#define OS_TASK_IDLE_STK_SIZE   300    /* Idle       task stack size (# of OS_STK wide entries)        */
+#define OS_TASK_IDLE_STK_SIZE   400    /* Idle       task stack size (# of OS_STK wide entries)        */
 
 
                                        /* --------------------- TASK MANAGEMENT ---------------------- */

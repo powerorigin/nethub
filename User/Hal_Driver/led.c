@@ -19,6 +19,6 @@ void  Led_Init()
 	GPIO_Init(GPIOB, &GPIO_InitStructure);  
 
 	LED_SIGNAL_OFF;
-	LED_CONFIG_OFF;
+	LED_CONFIG_ON;
 	
 }

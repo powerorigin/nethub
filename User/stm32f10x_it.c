@@ -28,6 +28,7 @@
 //#include "delay.h"
 #include "protocol.h"
 #include "433RF.h"
+#include "led.h"
 
 extern m2w_mcuStatus							m_m2w_mcuStatus;
 extern uint8_t 										uart_buf[]; 
@@ -39,11 +40,11 @@ extern uint8_t 										wait_ack_time;
 extern uint8_t										report_status_idle_time;
 extern uint16_t 									Key_Return;           						//按键返回值
 extern uint8_t 										cmd_flag1, cmd_flag2;
+extern uint8_t                    wifi_status;
 
 extern INT8U err;
 
 extern uint8_t get_one_package;
-extern OS_EVENT  *message_event,*rf_receive_event;
 /** @addtogroup Template_Project
   * @{
   */
@@ -181,6 +182,11 @@ void USART1_IRQHandler(void)
 {  
 	uint8_t 	vlue;
 	short			i;
+	
+//	 OS_CPU_SR  cpu_sr;
+
+
+//    OS_ENTER_CRITICAL();                         /* Tell uC/OS-II that we are starting an ISR          */
                   /* Tell uC/OS-II that we are starting an ISR          */
   if(USART_GetITStatus(USART1, USART_IT_RXNE) != RESET)
   { 
@@ -234,7 +240,8 @@ void USART1_IRQHandler(void)
 		}
 
   }
-
+	
+	//OS_EXIT_CRITICAL();
 }
 
 /******************************************************************************/
@@ -247,16 +254,51 @@ void TIM3_IRQHandler(void)
 	static uint8_t Key_Prev    = 0;        							//上一次按键     
 	static uint16_t Key_Delay   = 0;        						//按键连发时间     
 	static uint8_t Key_Series  = FALSE;    							//标志连发开始	
-	
-	uint16_t Key_Press  = NO_KEY;          	 						//按键值     
+	static uint8_t flag = 0;
+	static uint8_t time = 0;
 		
+	uint16_t Key_Press  = NO_KEY;          	 						//按键值     
 	if (TIM_GetITStatus(TIM3, TIM_IT_Update) != RESET)  //检查TIM3更新中断发生与否
 	{
 		TIM_ClearITPendingBit(TIM3, TIM_IT_Update  );  		//清除TIMx更新中断标志 
 		wait_ack_time++;
 //		check_status_time++;
 		report_status_idle_time++;
-			
+		
+		if(wifi_status == 0x01)     															//配置状态
+		{
+			if(time++ > 50)
+			{
+				time = 0;
+				if(flag)
+				{
+						LED_CONFIG_ON;
+					  flag = 0;
+				}	
+				else
+				{
+						LED_CONFIG_OFF;
+						flag = 1;
+				}
+			}
+		}		
+    if(wifi_status == 0x02)     															//配置状态
+		{
+			if(time++ > 10)
+			{
+				time = 0;
+				if(flag)
+				{
+						LED_CONFIG_ON;
+					  flag = 0;
+				}	
+				else
+				{
+						LED_CONFIG_OFF;
+						flag = 1;
+				}
+			}
+		}			
 		Key_Press  =	Get_Key();	
 
 		switch (Key_State)
@@ -286,7 +328,7 @@ void TIM3_IRQHandler(void)
 					Key_Delay = 0; 
 					Key_Series  = FALSE;
 					Key_Return  = KEY_UP | Key_Prev;      			//返回按键抬起值
-					OSSemPost(message_event);
+				//	OSSemPost(message_event);
 					break;
 				}	
 				if ( Key_Press ==Key_Prev )
@@ -296,7 +338,7 @@ void TIM3_IRQHandler(void)
 					{               
 						Key_Delay  = 0;                  
 						Key_Return = KEY_LONG | Key_Prev;   			//返回长按后的值 	
-						OSSemPost(message_event);			
+			//			OSSemPost(message_event);			
 						break; 
 					}
 				}
@@ -305,6 +347,7 @@ void TIM3_IRQHandler(void)
 				break;
 		}		
 	}
+//	OS_EXIT_CRITICAL();
 } 
 /******************************************************************************/
 /*             20US定时中断              */
@@ -315,10 +358,10 @@ void TIM2_IRQHandler(void)
 	static u8 i = 0;
 	static u8 j = 0;
 	static u8 flag = 1;
-	static rf_fix_data = 0xaa;
-	 OS_CPU_SR  cpu_sr;
+	static u8 rf_fix_data = 0xaa;
+//	 OS_CPU_SR  cpu_sr;
 
-	 OS_ENTER_CRITICAL();  	
+//	 OS_ENTER_CRITICAL();  	
 	if (TIM_GetITStatus(TIM2, TIM_IT_Update) != RESET)  //检查TIM3更新中断发生与否
 	{
 		TIM_ClearITPendingBit(TIM2, TIM_IT_Update );  		//清除TIMx更新中断标志 
@@ -444,24 +487,31 @@ void TIM2_IRQHandler(void)
 //		IRstudyfinsh();		   //红外接收结束程序
 
 	}
-	 OS_EXIT_CRITICAL();
+	// OS_EXIT_CRITICAL();
 }
 
 void TIM4_IRQHandler(void)   				
 {
-		
+//	OS_CPU_SR  cpu_sr;
+
+//	 OS_ENTER_CRITICAL();  		
 	if (TIM_GetITStatus(TIM4, TIM_IT_Update) != RESET)  //检查TIM3更新中断发生与否										      
 	{
 		TIM_ClearITPendingBit(TIM4, TIM_IT_Update );  		//清除TIMx更新中断标志 
 		TIM_Cmd(TIM4, DISABLE);
 	//	m_rf_receive.flag = 0;
 	}
+//	OS_EXIT_CRITICAL();
 }
  
 void EXTI9_5_IRQHandler(void) 
 {
-    static u16 time_l = 0;
+  static u16 time_l = 0;
 	static u16 time_h = 0; 
+	
+//	OS_CPU_SR  cpu_sr;
+
+//	 OS_ENTER_CRITICAL();  	
 	EXTI->EMR &= (uint32_t)~(1<<1);   									//屏蔽中断事件
 	EXTI_ClearITPendingBit(EXTI_Line8);
 	
@@ -493,15 +543,16 @@ void EXTI9_5_IRQHandler(void)
 			{
 				if(crc8_check(&m_rf_receive.data[0], m_rf_receive.data_len/8-1 ) == m_rf_receive.data[m_rf_receive.data_len/8-1])
 				{
-					OSSemPost(rf_receive_event);
-					TIM_Cmd(TIM4, DISABLE);
-					NVIC->ICER[23 >> 0x05] =  (uint32_t)0x01 << (23 & (uint8_t)0x1F);
+//					OSSemPost(rf_receive_event);
+						rf_state = RF_RECEIVE_FINSH;
+						TIM_Cmd(TIM4, DISABLE);
+						NVIC->ICER[23 >> 0x05] =  (uint32_t)0x01 << (23 & (uint8_t)0x1F);
 				}
 			}
 			else
 			{
 			    m_rf_receive.data_len = 0;
-				memset(m_rf_receive.data, 0, RFDATALEN); 
+					memset(m_rf_receive.data, 0, RFDATALEN); 
 			}  
 
 		}
@@ -515,9 +566,10 @@ void EXTI9_5_IRQHandler(void)
 		time_h = 0;
 	}    
 	EXTI->EMR |= (uint32_t)(1<<1);  										//开启中断事件  
+//	OS_EXIT_CRITICAL();
 }
 
-
+/*
 void EXTI15_10_IRQHandler(void) 
 {
 	EXTI->EMR &= (uint32_t)~(1<<1);   									//屏蔽中断事件
@@ -537,7 +589,7 @@ void EXTI15_10_IRQHandler(void)
 	}	
 	EXTI_ClearITPendingBit(EXTI_Line11);
 	EXTI->EMR |= (uint32_t)(1<<1);  										//开启中断事件  
-}
+}*/
 
 /**
   * @}

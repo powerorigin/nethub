@@ -1,6 +1,6 @@
 /**
   ******************************************************************************
-  * @file    Project/Template/stm32f10x_it.h 
+  * @file    Project/T emplate/stm32f10x_it.h 
   * @author  MCD Application Team
   * @version V3.1.2
   * @date    09/28/2009

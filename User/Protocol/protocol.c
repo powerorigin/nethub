@@ -21,6 +21,7 @@ extern uint8_t 										wait_ack_time;
 extern uint8_t 										uart_buf[256];
 extern uint16_t										uart_Count;
 extern uint32_t										wait_wifi_status;
+extern uint8_t                    wifi_status;
 
 /*******************************************************************************
 * Function Name  : exchangeBytes
@@ -242,6 +243,8 @@ void	CmdReportModuleStatus(uint8_t *buf)
 	if((m_w2m_reportModuleStatus.status[1] & 0x01) == 0x01)
 	{
 		//打开了softap功能
+			wifi_status = 0;
+			LED_CONFIG_OFF;
 	}
 	else
 	{
@@ -252,6 +255,7 @@ void	CmdReportModuleStatus(uint8_t *buf)
 	if((m_w2m_reportModuleStatus.status[1] & 0x02) == 0x02)
 	{
 		//打开了station功能
+		
 	}
 	else
 	{
@@ -284,13 +288,15 @@ void	CmdReportModuleStatus(uint8_t *buf)
 		//连接路由器成功
 		if(wait_wifi_status == 1){
 			wait_wifi_status = 0;
-			LED_CONFIG_OFF;
+			wifi_status = 0;
+			LED_CONFIG_ON;
 			//LED_RGB_Control(0, 0, 0);
 		}
 	}
 	else
 	{
 		//从路由器断开
+		LED_CONFIG_OFF;
 	}
 	
 	//5 bit
@@ -299,7 +305,8 @@ void	CmdReportModuleStatus(uint8_t *buf)
 		//连接服务器成功
 		if(wait_wifi_status == 1){
 			wait_wifi_status = 0;
-			LED_CONFIG_OFF;
+			wifi_status = 0;
+			LED_CONFIG_ON;
 			//LED_RGB_Control(0, 0, 0);
 		}
 	}
@@ -319,22 +326,24 @@ void	CmdReportModuleStatus(uint8_t *buf)
 * Return         : None
 * Attention		   : None
 *******************************************************************************/
-void MessageHandle(void)
+uint8_t MessageHandle(void)
 {
 	pro_headPart	tmp_headPart;		
+   
 	memset(&tmp_headPart, 0, sizeof(pro_headPart));
 	
 	if(get_one_package)
 	{	
-		get_one_package = 0;		
-		LED_SIGNAL_ON;
+		get_one_package = 0;	
+    LED_SIGNAL_ON;		
 		memcpy(&tmp_headPart, uart_buf, sizeof(pro_headPart));
 													 
 		//校验码错误，返回错误命令
 		if(CheckSum(uart_buf, uart_Count) != uart_buf[uart_Count-1]) 
 		{
-			SendErrorCmd(ERROR_CHECKSUM, tmp_headPart.sn);
-			return ;
+			//SendErrorCmd(ERROR_CHECKSUM, tmp_headPart.sn);
+			LED_SIGNAL_OFF;
+			return  0;
 		}
 		
 		switch(tmp_headPart.cmd)
@@ -352,7 +361,8 @@ void MessageHandle(void)
 			//重启，mcu开发者复用即可，更改成系统的重启函数即可，必须等待600毫秒再重启
 			case CMD_REBOOT_MCU:
 				SendCommonCmd(CMD_REBOOT_MCU_ACK, tmp_headPart.sn);
-				OSTimeDlyHMSM(0,0,0,600); 	
+			  delay_us(600000); 
+			//	OSTimeDlyHMSM(0,0,0,600); 	
 				NVIC_SystemReset();
 			
 			//控制命令，mcu开发者套用模板，重点实现解析出来的命令正确操作外设
@@ -364,16 +374,16 @@ void MessageHandle(void)
 			case	CMD_REPORT_MODULE_STATUS:
 				CmdReportModuleStatus(uart_buf);
 				break;
-			
+		   	
 			//发送错误命令字
 			default:
-				SendErrorCmd(ERROR_CMD, tmp_headPart.sn);
+	//			SendErrorCmd(ERROR_CMD, tmp_headPart.sn);
 				break;
 		}
 		memset(&uart_buf, 0, sizeof(uart_buf));
 		LED_SIGNAL_OFF;
 	}
-}
+}  
 
 /*******************************************************************************
 * Function Name  : SendToUart
@@ -390,14 +400,18 @@ void SendToUart(uint8_t *buf, uint16_t packLen, uint8_t tag)
 	pro_headPart		send_headPart;	
 	pro_commonCmd		recv_commonCmd;
 	uint8_t					m_55;
-	
+	OS_CPU_SR  cpu_sr;
+
+
+  OS_ENTER_CRITICAL();                         /* Tell uC/OS-II that we are starting an ISR          */
+    
 	m_55 = 0x55;
 	for(i=0;i<packLen;i++){								     
 		UART1_Send_DATA(buf[i]);
 		//当数据区出现FF时，追加发送55，包头的FF FF不能追加55
 		if(i >=2 && buf[i] == 0xFF) UART1_Send_DATA(m_55);		
 	}
-	
+	OS_EXIT_CRITICAL();
 	//如果tag＝0，不需要等待ACK；
 	if(tag == 0) return ;
 	
@@ -479,7 +493,7 @@ void ReportStatus(uint8_t tag)
 		m_m2w_mcuStatus.sub_cmd = SUB_CMD_REPORT_MCU_STATUS;
 //		m_m2w_mcuStatus.status_w.motor_speed = exchangeBytes(m_m2w_mcuStatus.status_w.motor_speed);
 		m_m2w_mcuStatus.sum = CheckSum((uint8_t *)&m_m2w_mcuStatus, sizeof(m2w_mcuStatus));
-		SendToUart((uint8_t *)&m_m2w_mcuStatus, sizeof(m2w_mcuStatus), 1);		
+		SendToUart((uint8_t *)&m_m2w_mcuStatus, sizeof(m2w_mcuStatus), 1);		     //没反馈
 
 /*		m_w2m_controlMcu.head_part.cmd = CMD_SEND_MODULE_P0;
 		m_w2m_controlMcu.head_part.sn = ++SN;
@@ -516,48 +530,24 @@ void ReportStatus(uint8_t tag)
 *******************************************************************************/
 
 void	CheckStatus(void)
-{
-	int					i, diff;
-  //  static	uint8_t		index_new[2], index_old[2];
-	
-	diff = 0;			 	
-	DHT11_Read_Data(&temperature_humidity_new[0], &temperature_humidity_new[1]);
-	
-//	if(check_status_time < 200) return ;
-		
-//	check_status_time = 0;
-	
-		
-	for(i=0; i<2; i++)
-	{
-		if(temperature_humidity_old[i] != temperature_humidity_new[i]) diff += 1;
-	}
-	memcpy(&temperature_humidity_old[0],&temperature_humidity_new[0],2);	
-/*	if(diff == 0)
-	{
-		index_new = (uint8_t *)&(m_m2w_mcuStatus.status_r);
-		index_old = (uint8_t *)&(m_m2w_mcuStatus_reported.status_r);
-			
-		for(i=0; i<sizeof(status_readonly); i++)
-		{
-			if(*(index_new+i) != *(index_old+i)) diff += 1;
-		}
-	}	*/								 
-	
-	//如果状态1分钟没有变化，强制上报一次；
-	if(diff > 0 || report_status_idle_time > 60000)
-	{
-	//	 ReportStatus(REPORT_STATUS);
-	     m_m2w_mcuStatus.status_w.device_sort = 0x00;
+{	 	
+	static uint8_t  time = 0;
+		DHT11_Read_Data(&temperature_humidity_new[0], &temperature_humidity_new[1]);
+
+	   m_m2w_mcuStatus.status_w.device_sort = 0x00;
 		 m_m2w_mcuStatus.status_w.device_id = 0x00;
 		 m_m2w_mcuStatus.status_w.device_cmd = HOST_BACK_CMD;
 		 m_m2w_mcuStatus.status_w.device_data[1] = temperature_humidity_new[0];
 		 m_m2w_mcuStatus.status_w.device_data[2] = temperature_humidity_new[1];
 		 ReportStatus(REPORT_STATUS);
-		 report_status_idle_time = 0;
-	}
-	Read_HT1381_NowTimer();
-	AT24CXX_Write(AT24CXX_TIME_ADDR,&timer_tab,sizeof(timer_tab));	
+
+
+		Read_HT1381_NowTimer();
+	  if(time++ > 10)
+		{
+			  time = 0;
+				AT24CXX_Write(AT24CXX_TIME_ADDR,&timer_tab,sizeof(timer_tab));	
+		}
 //	if(report_status_idle_time > 60000) report_status_idle_time = 0;
 	
 }					   

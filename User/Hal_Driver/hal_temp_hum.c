@@ -29,6 +29,7 @@ void DHT11_Rst(void)
 {                 
 	DHT11_IO_OUT(); 											//SET OUTPUT
     DHT11_DQ_OUT=0; 											//GPIOA.0=0
+		//delay_us(20000);  
     OSTimeDlyHMSM(0,0,0,20); 	//1s延时，释放CPU控制权  								//Pull down Least 18ms
     DHT11_DQ_OUT=1; 											//GPIOA.0=1    
 	delay_us(30);     										//Pull up 20~40us
@@ -125,13 +126,12 @@ u8 DHT11_Init(void)
 {	 
  	GPIO_InitTypeDef  GPIO_InitStructure;
  	
- 	RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOB, ENABLE);	 
 	
- 	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_5;				 
+ 	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_6;				 
  	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP; 		 
  	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
- 	GPIO_Init(GPIOB, &GPIO_InitStructure);				 
- 	GPIO_SetBits(GPIOB,GPIO_Pin_5);						 
+ 	GPIO_Init(GPIOA, &GPIO_InitStructure);				 
+ 	GPIO_SetBits(GPIOA,GPIO_Pin_6);						 
 			    
 	DHT11_Rst();  
 	return DHT11_Check();

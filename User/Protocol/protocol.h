@@ -147,7 +147,7 @@ __packed	struct	_w2m_reportModuleStatus
 };
 
 short	exchangeBytes(short value);
-void	MessageHandle(void);
+uint8_t	MessageHandle(void);
 void	SendToUart(uint8_t *buf, uint16_t packLen, uint8_t tag);
 void	ReportStatus(uint8_t tag);
 void	CheckStatus(void);

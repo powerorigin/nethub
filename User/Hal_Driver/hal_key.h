@@ -6,11 +6,11 @@
 
 #define GPIO_KEY1_CLK    	RCC_APB2Periph_GPIOB
 #define GPIO_KEY1_PORT   	GPIOB
-#define GPIO_KEY1_PIN    	GPIO_Pin_12
+#define GPIO_KEY1_PIN    	GPIO_Pin_13
 
 #define GPIO_KEY2_CLK    	RCC_APB2Periph_GPIOB
 #define GPIO_KEY2_PORT   	GPIOB
-#define GPIO_KEY2_PIN    	GPIO_Pin_13
+#define GPIO_KEY2_PIN    	GPIO_Pin_12
 
 #define GPIO_KEY3_CLK    	RCC_APB2Periph_GPIOB
 #define GPIO_KEY3_PORT   	GPIOB

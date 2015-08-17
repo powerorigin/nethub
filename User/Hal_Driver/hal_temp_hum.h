@@ -8,19 +8,19 @@
 
 //Set GPIO Direction
 #define DHT11_IO_IN()  GPIO_InitTypeDef GPIO_InitStruct;\
-	                     GPIO_InitStruct.GPIO_Pin = GPIO_Pin_5;\
+	                     GPIO_InitStruct.GPIO_Pin = GPIO_Pin_6;\
 	                     GPIO_InitStruct.GPIO_Mode = GPIO_Mode_IPU;\
 	                     GPIO_InitStruct.GPIO_Speed = GPIO_Speed_10MHz;\
-	                     GPIO_Init(GPIOB, &GPIO_InitStruct);
+	                     GPIO_Init(GPIOA, &GPIO_InitStruct);
 											 
 #define DHT11_IO_OUT() GPIO_InitTypeDef GPIO_InitStruct;\
-	                     GPIO_InitStruct.GPIO_Pin = GPIO_Pin_5;\
+	                     GPIO_InitStruct.GPIO_Pin = GPIO_Pin_6;\
 	                     GPIO_InitStruct.GPIO_Mode = GPIO_Mode_Out_PP;\
 	                     GPIO_InitStruct.GPIO_Speed = GPIO_Speed_10MHz;\
-	                     GPIO_Init(GPIOB, &GPIO_InitStruct);
+	                     GPIO_Init(GPIOA, &GPIO_InitStruct);
 	
-#define	DHT11_DQ_OUT PBout(5) 
-#define	DHT11_DQ_IN  PBin(5)  
+#define	DHT11_DQ_OUT PAout(6) 
+#define	DHT11_DQ_IN  PAin(6)  
 
 extern uint8_t  fac_us;		
 

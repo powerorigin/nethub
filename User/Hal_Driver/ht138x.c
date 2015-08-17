@@ -277,14 +277,14 @@ void Int_HT1381(void)
 ********************************************************************/ 
 void Set_Timer()
 {		
-	timer_tab.timersec = 0x00; 			
+	/*timer_tab.timersec = 0x00; 			
 	timer_tab.timermin = 0x3a; 			
 	timer_tab.timerhour = 0x17; 			
 	timer_tab.timerday = 0x1e; 			
 	timer_tab.timermonth = 0x06; 			
 	timer_tab.timerweek = 0x01; 			
-	timer_tab.timeryear = 0x0f;
+	timer_tab.timeryear = 0x0f;*/
 	OToBCD();			
 	Int_HT1381();		//≥ı ºªØHT1381 			
-//	BCDToO();
+	BCDToO();
 }

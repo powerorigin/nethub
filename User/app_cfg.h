@@ -7,9 +7,9 @@
 #define CHECKSTATUS_TASK_PRIO                 10
 
 /* task stack size */ 
-#define MESSAGE_TASK_STK_SIZE                  400 
+#define MESSAGE_TASK_STK_SIZE                  300 
 #define KEY_TASK_STK_SIZE                      100
-#define CHECKSTATUS_TASK_STK_SIZE              400
-#define RFHEART_TASK_STK_SIZE				   				 400
-#define RFRECEIVE_TASK_STK_SIZE				   			 400
-#define RFSEND_TASK_STK_SIZE				   				 400
+#define CHECKSTATUS_TASK_STK_SIZE              300
+#define RFHEART_TASK_STK_SIZE				   				 300
+#define RFRECEIVE_TASK_STK_SIZE				   			 300
+#define RFSEND_TASK_STK_SIZE				   				 300

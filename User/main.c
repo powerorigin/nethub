@@ -1,5 +1,5 @@
 /*******************************************************************************
-1、本工程是GoKit的最新版本工程；
+1、本工程是GoKit 的 最 新 版 本 工 程；
 2、mcu开发者可以关心protocol.h 和 protocol.c这两个文件；
 3、用于传输的通用协议（非P0），mcu开发者可以最大程度的复用此工程源码；
 4、mcu开发者重点关注protocol.c中的CmdSendMcuP0和CmdReportModuleStatus这两个函数（需要控制外设和处理外设状态）；
@@ -9,6 +9,7 @@
 
 #include <stm32f10x.h>
 #include <includes.h>
+#include "stm32f10x_iwdg.h"
 #include "ucos_ii.h"
 #include "hal_uart.h"
 #include "hal_key.h"
@@ -26,10 +27,11 @@
 #include "ht138x.h"
 #include "led.h"
 
+
 static  OS_STK  message_task_stk[MESSAGE_TASK_STK_SIZE];   //开辟任务堆栈
 //static  OS_STK  key_task_stk[KEY_TASK_STK_SIZE];    //开辟任务堆栈
 static  OS_STK  checkstatus_task_stk[CHECKSTATUS_TASK_STK_SIZE];    //开辟任务堆栈
-static  OS_STK  rf_heart_task_stk[RFHEART_TASK_STK_SIZE];    //开辟任务堆栈
+//static  OS_STK  rf_heart_task_stk[RFHEART_TASK_STK_SIZE];    //开辟任务堆栈
 static  OS_STK  rf_receive_task_stk[RFRECEIVE_TASK_STK_SIZE];    //开辟任务堆栈
 static  OS_STK  rf_send_task_stk[RFSEND_TASK_STK_SIZE];    //开辟任务堆栈
 
@@ -52,6 +54,7 @@ uint8_t 									report_status_idle_time;
 uint32_t									SN;
 uint8_t 									cmd_flag1, cmd_flag2;
 uint32_t									wait_wifi_status;
+uint8_t                   wifi_status;
 
 pro_commonCmd							m_pro_commonCmd;							//通用命令，心跳、ack等可以复用此帧
 m2w_returnMcuInfo					m_m2w_returnMcuInfo;					//返回mcu信息帧
@@ -63,7 +66,7 @@ w2m_reportModuleStatus		m_w2m_reportModuleStatus;			//wifi模块上报状态帧
 pro_errorCmd							m_pro_errorCmd;								//错误命令帧
 
 
-
+ 
 int	McuStatusInit()
 {
 	SN = 0;
@@ -74,6 +77,7 @@ int	McuStatusInit()
 	cmd_flag = 0;
 	cmd_len = 0 ;	
 	wait_wifi_status = 0;
+	wifi_status= 0;
 	
 	memset(uart_buf, 0, 256);
 	
@@ -131,12 +135,28 @@ void  Mcu_Data_Init(void)
 	AT24CXX_Read(AT24CXX_TIME_ADDR,&timer_tab.timersec,sizeof(timer_tab));	
 	Set_Timer();	
 }
+void Wdt_Init(void)
+{
+	//RCC_APB1PeriphClockCmd(RCC_APB1Periph_WWDG, ENABLE);    /*WWDG????*/
+ // Enable write access to IWDG_PR and IWDG_RLR registers 
+  IWDG_WriteAccessCmd(IWDG_WriteAccess_Enable);  //IWDG->KR = 0x5555
+ // IWDG counter clock: 40KHz(LSI) / 64 = 0.625 KHz 
+  IWDG_SetPrescaler(IWDG_Prescaler_256);   //IWDG->PR = 0x06;
 
+ // Set counter reload value to 1250 
+  IWDG_SetReload(781);           //IWDG->RLR =0xFFF           //5S不喂狗复位
+
+  IWDG_ReloadCounter();   //IWDG->KR = 0xAAAA
+
+  IWDG_Enable();   //IWDG->KR = 0xCCCC
+
+}
 void  BSP_Init (void)
 {
 	//系统初始化
 	SystemInit();
 	systick_init();     /* Initialize the SysTick. */  
+	Wdt_Init();
  	UART_Configuration();
 	KEY_GPIO_Init();
 	TIM3_Int_Init(100,7199);
@@ -147,16 +167,21 @@ void  BSP_Init (void)
 	Ht138x_Init();
 	LT_init();
 	Led_Init();
+//	DHT11_Init(); 
+			
 	//初始化各类型数据帧
 	McuStatusInit();
+	//Mcu_Data_Init();
 	//
 }
 
 void App_TaskIdleHook(void)
 {
-	 Rf_Receive();
-	 MessageHandle();
-	 LT_RxData();
+	 Rf_Receive();																											//RF接收
+	 MessageHandle();																										//串口数据
+	 LT_RxData();																												//2.4G接收
+	 KeyHandle();																												//按键
+	 IWDG_ReloadCounter(); 																							//喂狗
 }		   
 
 static void systick_init(void) 
@@ -175,7 +200,7 @@ static void checkstatus_task(void *p_arg)
 	{	 
 		 //检查系统最新状态
 		 CheckStatus();
-		 OSTimeDlyHMSM(0,0,10,0); 	//10分钟延时，释放CPU控制权
+		 OSTimeDlyHMSM(0,1,0,0); 	//1分钟延时，释放CPU控制权
 	}
 }
 /*					 
@@ -190,7 +215,7 @@ static void key_task(void *p_arg)
 //		 OSTimeDlyHMSM(0,0,1,0); 	//1s延时，释放CPU控制权
 	}
 }
-				   */
+				   
 
 static void rf_heart_task(void *p_arg)	  //RF发送心跳包
 {
@@ -202,7 +227,7 @@ static void rf_heart_task(void *p_arg)	  //RF发送心跳包
 		 
 	}
 }
-
+*/
 static void rf_send_task(void *p_arg)
 {   
 //	OS_CPU_SR  cpu_sr;
@@ -260,9 +285,9 @@ static void rf_receive_task(void *p_arg)   //RF接收数据处理
 static void message_task(void *p_arg) 
 { 
 	 //   systick_init();     /* Initialize the SysTick. */ 
-	  DHT11_Init(); 
-		Mcu_Data_Init();	
-		message_event =  OSSemCreate(0);
+	//	message_event =  OSSemCreate(0);
+		DHT11_Init();
+		Mcu_Data_Init();
 		rf_receive_event =  OSSemCreate(0);
 		rf_send_event = OSSemCreate(0);
 	//	OSSemPend(message_event,0,&err);
@@ -271,8 +296,8 @@ static void message_task(void *p_arg)
 	//	OSTaskCreateExt(key_task, 0, &key_task_stk[KEY_TASK_STK_SIZE-1], KEY_TASK_PRIO,KEY_TASK_PRIO,&key_task_stk[0],
 	//					KEY_TASK_STK_SIZE,(void *)0,OS_TASK_OPT_STK_CHK | OS_TASK_OPT_STK_CLR); 
 	  	
-		OSTaskCreateExt(rf_heart_task, 0, &rf_heart_task_stk[RFHEART_TASK_STK_SIZE-1], RFHEART_TASK_PRIO,RFHEART_TASK_PRIO,&rf_heart_task_stk[0],
-						RFHEART_TASK_STK_SIZE,(void *)0,OS_TASK_OPT_STK_CHK | OS_TASK_OPT_STK_CLR);
+	//	OSTaskCreateExt(rf_heart_task, 0, &rf_heart_task_stk[RFHEART_TASK_STK_SIZE-1], RFHEART_TASK_PRIO,RFHEART_TASK_PRIO,&rf_heart_task_stk[0],
+	//					RFHEART_TASK_STK_SIZE,(void *)0,OS_TASK_OPT_STK_CHK | OS_TASK_OPT_STK_CLR);
 
 		OSTaskCreateExt(rf_receive_task, 0, &rf_receive_task_stk[RFRECEIVE_TASK_STK_SIZE-1], RFRECEIVE_TASK_PRIO,RFRECEIVE_TASK_PRIO,&rf_receive_task_stk[0],
 						RFRECEIVE_TASK_STK_SIZE,(void *)0,OS_TASK_OPT_STK_CHK | OS_TASK_OPT_STK_CLR);
@@ -286,16 +311,18 @@ static void message_task(void *p_arg)
 		
 		while(1) 
 		{
-			  OSSemPend(message_event,0,&err);			
-				KeyHandle();	
+			 // OSSemPend(message_event,0,&err);			
+			//	KeyHandle();	
+				Rf_Heart_package();
+				OSTimeDlyHMSM(0,3,0,0); 	//1s延时，释放CPU控制权
 		}        
 }
 //u8 rxdata[4];			  
 //extern u8  RegH,RegL;
 int main(void)
    {
-   		BSP_Init ();
-		OSInit(); 
+      BSP_Init ();
+			OSInit(); 
 // g_TxMbox=OSMboxCreate((void*)0); //创建全局信号-消息邮箱
         OSTaskCreateExt(message_task, (void *)0, 
               &message_task_stk[MESSAGE_TASK_STK_SIZE - 1], 

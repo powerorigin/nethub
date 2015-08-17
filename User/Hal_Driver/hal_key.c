@@ -6,12 +6,13 @@
 //#include "IR.h"
 
 
-
+extern void delay_us(uint32_t nus);
 extern m2w_mcuStatus			m_m2w_mcuStatus;
 extern m2w_setModule			m_m2w_setModule;
 extern pro_commonCmd			m_pro_commonCmd;
 extern int								SN;		
 extern uint32_t						wait_wifi_status;
+extern uint8_t            wifi_status;
 
 uint16_t Key_Return = NO_KEY;           	//按键返回值
 
@@ -127,9 +128,10 @@ void KeyHandle(void)
 			m_pro_commonCmd.sum = CheckSum((uint8_t *)&m_pro_commonCmd, sizeof(pro_commonCmd));
 			SendToUart((uint8_t *)&m_pro_commonCmd, sizeof(pro_commonCmd), 1);
 			
-			LED_CONFIG_ON;
-			OSTimeDlyHMSM(0,0,0,100); 	//500ms延时，释放CPU控制权
-			LED_CONFIG_OFF;
+			//LED_CONFIG_ON;
+			wifi_status = 2;
+		 //	delay_us(100000);
+		//	OSTimeDlyHMSM(0,0,0,100); 	//500ms延时，释放CPU控制权
 			Key_Return = 0;
 		}
  	}
@@ -138,13 +140,14 @@ void KeyHandle(void)
 		if(Key_Return & KEY_LONG) 
 		{
 			m_m2w_setModule.config_info = 0x01;		//soft ap
-			LED_CONFIG_ON;	
+	//		LED_CONFIG_ON;	
+			wifi_status = 1;
 			wait_wifi_status = 1;													  
 		}
 		else if(Key_Return & KEY_UP) 
 		{
 			m_m2w_setModule.config_info = 0x02;		//air link
-			LED_CONFIG_ON;
+			wifi_status = 1;
 			wait_wifi_status = 1;
 		}
 		else
@@ -156,8 +159,9 @@ void KeyHandle(void)
 		m_m2w_setModule.head_part.sn = ++SN;
 		m_m2w_setModule.sum = CheckSum((uint8_t *)&m_m2w_setModule, sizeof(m2w_setModule));
 		SendToUart((uint8_t *)&m_m2w_setModule, sizeof(m2w_setModule), 1);
-			
-		OSTimeDlyHMSM(0,0,0,500); 	//500ms延时，释放CPU控制权
+		
+		delay_us(50000);		
+//		OSTimeDlyHMSM(0,0,0,500); 	//500ms延时，释放CPU控制权
 		Key_Return = 0;
 	} 
 
