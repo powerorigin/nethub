@@ -5,23 +5,28 @@
 #include "LT8900_protocol.h"
 #include "ht138x.h"
 #include	"led.h"
+#include "24cxx.h" 
 
-extern int												SN;
-extern uint8_t 										get_one_package;
-extern pro_commonCmd							m_pro_commonCmd;
-extern pro_errorCmd								m_pro_errorCmd;
-extern m2w_returnMcuInfo					m_m2w_returnMcuInfo;
-extern w2m_controlMcu							m_w2m_controlMcu;
-extern m2w_mcuStatus							m_m2w_mcuStatus;
-extern m2w_mcuStatus							m_m2w_mcuStatus_reported;
-extern w2m_reportModuleStatus			m_w2m_reportModuleStatus;
-//extern uint8_t										check_status_time;
-extern uint8_t										report_status_idle_time;	
-extern uint8_t 										wait_ack_time;
-extern uint8_t 										uart_buf[256];
-extern uint16_t										uart_Count;
-extern uint32_t										wait_wifi_status;
-extern uint8_t                    wifi_status;
+extern int							SN;
+extern uint8_t 						get_one_package;
+extern pro_commonCmd				m_pro_commonCmd;
+extern pro_errorCmd					m_pro_errorCmd;
+extern m2w_returnMcuInfo			m_m2w_returnMcuInfo;
+extern w2m_controlMcu				m_w2m_controlMcu;
+extern m2w_mcuStatus				m_m2w_mcuStatus;
+extern m2w_mcuStatus				m_m2w_mcuStatus_reported;
+extern w2m_reportModuleStatus		m_w2m_reportModuleStatus;
+//extern uint8_t					check_status_time;
+extern uint8_t						report_status_idle_time;	
+extern uint8_t 						wait_ack_time;
+extern uint8_t 						uart_buf[256];
+extern uint16_t						uart_Count;
+extern uint8_t                    	wifi_status;
+extern uint8_t                   	LEDGroup_Status;
+extern uint16_t				  		LEDGroup_Wait_Status;
+extern uint8_t				  		LEDGroup_MatchCode_Status;
+extern u8 flag1;
+
 
 /*******************************************************************************
 * Function Name  : exchangeBytes
@@ -128,11 +133,14 @@ void	CmdSendMcuP0(uint8_t *buf)
 		
 		switch(m_w2m_controlMcu.status_w.device_sort)
 		{
-		    case  	RF_DATA:Rf_Send_Process((uint8_t *)&m_w2m_controlMcu.status_w);//	Wireless_control(m_w2m_controlMcu.status_w.device_data);
+		    case  	RF_DATA: Rf_Send_Process((uint8_t *)&m_w2m_controlMcu.status_w);//	Wireless_control(m_w2m_controlMcu.status_w.device_data);
 			          break;
-			  case    LT8900_DATA : memcpy(Lt8900_Txdata,(uint8_t *)&m_w2m_controlMcu.status_w,5);
-														//Lt8900_Txdata[1] = 1;
-															LT_TxData();
+			case    LT8900_DATA : //memcpy(Lt8900_Txdata,(uint8_t *)&m_w2m_controlMcu.status_w,5);
+									//LT_TxData();
+									flag1++;
+									//m_w2m_controlMcu.status_w.device_id=0x02;
+									//m_w2m_controlMcu.status_w.device_cmd=m_w2m_controlMcu.status_w.device_cmd|0x10;
+									LEDStatus();
 								break;
 			default : Host_Configuration((uint8_t *)&m_w2m_controlMcu.status_w);
 			          break;
@@ -286,12 +294,12 @@ void	CmdReportModuleStatus(uint8_t *buf)
 	if((m_w2m_reportModuleStatus.status[1] & 0x10) == 0x10)
 	{
 		//连接路由器成功
-		if(wait_wifi_status == 1){
-			wait_wifi_status = 0;
-			wifi_status = 0;
+		//if(wait_wifi_status == 1){
+
+			//wifi_status = 3;
 			LED_CONFIG_ON;
 			//LED_RGB_Control(0, 0, 0);
-		}
+		//}
 	}
 	else
 	{
@@ -303,12 +311,12 @@ void	CmdReportModuleStatus(uint8_t *buf)
 	if((m_w2m_reportModuleStatus.status[1] & 0x20) == 0x20)
 	{
 		//连接服务器成功
-		if(wait_wifi_status == 1){
-			wait_wifi_status = 0;
+		//if(wait_wifi_status == 1){
+		
 			wifi_status = 0;
 			LED_CONFIG_ON;
 			//LED_RGB_Control(0, 0, 0);
-		}
+		//}
 	}
 	else
 	{
@@ -330,12 +338,13 @@ uint8_t MessageHandle(void)
 {
 	pro_headPart	tmp_headPart;		
    
-	memset(&tmp_headPart, 0, sizeof(pro_headPart));
+								memset(&tmp_headPart, 0, sizeof(pro_headPart));
 	
 	if(get_one_package)
 	{	
+	
 		get_one_package = 0;	
-    LED_SIGNAL_ON;		
+    	LED_SIGNAL_ON;		
 		memcpy(&tmp_headPart, uart_buf, sizeof(pro_headPart));
 													 
 		//校验码错误，返回错误命令
@@ -361,8 +370,8 @@ uint8_t MessageHandle(void)
 			//重启，mcu开发者复用即可，更改成系统的重启函数即可，必须等待600毫秒再重启
 			case CMD_REBOOT_MCU:
 				SendCommonCmd(CMD_REBOOT_MCU_ACK, tmp_headPart.sn);
-			  delay_us(600000); 
-			//	OSTimeDlyHMSM(0,0,0,600); 	
+			  //delay_us(600000); 
+				OSTimeDlyHMSM(0,0,0,600); 	
 				NVIC_SystemReset();
 			
 			//控制命令，mcu开发者套用模板，重点实现解析出来的命令正确操作外设
@@ -401,9 +410,9 @@ void SendToUart(uint8_t *buf, uint16_t packLen, uint8_t tag)
 	pro_commonCmd		recv_commonCmd;
 	uint8_t					m_55;
 	OS_CPU_SR  cpu_sr;
+#if 1
 
-
-  OS_ENTER_CRITICAL();                         /* Tell uC/OS-II that we are starting an ISR          */
+  	OS_ENTER_CRITICAL();                         /* Tell uC/OS-II that we are starting an ISR          */
     
 	m_55 = 0x55;
 	for(i=0;i<packLen;i++){								     
@@ -444,13 +453,14 @@ void SendToUart(uint8_t *buf, uint16_t packLen, uint8_t tag)
 		else 
 		{
 				wait_ack_time = 0 ;
-			  for(i=0;i<packLen;i++){
+			  	for(i=0;i<packLen;i++){
 					UART1_Send_DATA(buf[i]);
 					if(i >=2 && buf[i] == 0xFF) UART1_Send_DATA(m_55);
 				}
 				Send_num ++;		
 		}	
 	}	
+#endif
 }
 
 /*******************************************************************************
@@ -532,23 +542,205 @@ void ReportStatus(uint8_t tag)
 void	CheckStatus(void)
 {	 	
 	static uint8_t  time = 0;
-		DHT11_Read_Data(&temperature_humidity_new[0], &temperature_humidity_new[1]);
+	DHT11_Read_Data(&temperature_humidity_new[0], &temperature_humidity_new[1]);
 
-	   m_m2w_mcuStatus.status_w.device_sort = 0x00;
-		 m_m2w_mcuStatus.status_w.device_id = 0x00;
-		 m_m2w_mcuStatus.status_w.device_cmd = HOST_BACK_CMD;
-		 m_m2w_mcuStatus.status_w.device_data[1] = temperature_humidity_new[0];
-		 m_m2w_mcuStatus.status_w.device_data[2] = temperature_humidity_new[1];
-		 ReportStatus(REPORT_STATUS);
+	m_m2w_mcuStatus.status_w.device_sort = 0x00;
+	m_m2w_mcuStatus.status_w.device_id = 0x00;
+	m_m2w_mcuStatus.status_w.device_cmd = HOST_BACK_CMD;
+	m_m2w_mcuStatus.status_w.device_data[1] = temperature_humidity_new[0];
+	m_m2w_mcuStatus.status_w.device_data[2] = temperature_humidity_new[1];
+	ReportStatus(REPORT_STATUS);
 
 
-		Read_HT1381_NowTimer();
-	  if(time++ > 10)
-		{
-			  time = 0;
-				AT24CXX_Write(AT24CXX_TIME_ADDR,&timer_tab,sizeof(timer_tab));	
-		}
+	Read_HT1381_NowTimer();
+	if(time++ > 10)
+	{
+		time = 0;
+		AT24CXX_Write(AT24CXX_TIME_ADDR,(u8*)&timer_tab,sizeof(timer_tab));	
+	}
 //	if(report_status_idle_time > 60000) report_status_idle_time = 0;
 	
 }					   
-	  
+
+/*******************************************************************************
+* Function Name  : LEDStatus
+* Description    : LED灯处理
+* Input          : None
+* Output         : None
+* Return         : None
+* Attention		   : 	
+*******************************************************************************/
+
+void	LEDStatus(void)
+{	 	
+	u8 id[3]={0xCC};
+#if 1
+	if((m_w2m_controlMcu.status_w.device_cmd&GROUP_CONTROL_CMD)==GROUP_CONTROL_CMD)
+	{
+		if((m_w2m_controlMcu.status_w.device_cmd&0x0f)==MATCODE_CONTROL_CMD)
+		{
+			LEDGroup_Status=MATCODE_CONTROL_CMD;
+			LT_LEDStatus();
+		}
+		else if((m_w2m_controlMcu.status_w.device_cmd&0x0f)==ERASURE_CONTROL_CMD)
+		{
+			LEDGroup_Status=ERASURE_CONTROL_CMD;
+			Set_LEDStatus(id,ERASURE_CONTROL_CMD);
+			memcpy(&m_m2w_mcuStatus.status_w,&m_w2m_controlMcu.status_w,6);
+			ReportStatus(REPORT_STATUS);			
+		}
+		else if((m_w2m_controlMcu.status_w.device_cmd&0x0f)==READ_CONTROL_CMD)
+		{
+		}
+		else if((m_w2m_controlMcu.status_w.device_cmd&0x0f)==WRITE_CONTROL_CMD)
+		{
+			LEDGroup_Status=WRITE_CONTROL_CMD;
+			LEDGroup_MatchCode_Status=0;
+			LT_LEDStatus();
+		}
+
+	}
+	else
+	{
+		memcpy(Lt8900_Txdata,(uint8_t *)&m_w2m_controlMcu.status_w,5);	
+		//Lt8900_Txdata[1] = 1;		
+		LT_TxData();
+	}
+
+#else
+		memcpy(Lt8900_Txdata,(uint8_t *)&m_w2m_controlMcu.status_w,5);	
+		//Lt8900_Txdata[1] = 1;
+		LT_TxData();
+#endif
+}		
+
+/*******************************************************************************
+* Function Name  : LT_LEDStatus
+* Description    : LED灯处理
+* Input          : None
+* Output         : None
+* Return         : None
+* Attention		   : 	
+*******************************************************************************/
+
+void	LT_LEDStatus(void)
+{
+	if((m_w2m_controlMcu.status_w.device_cmd&0x0f)==MATCODE_CONTROL_CMD)
+	{
+		memcpy(Lt8900_Txdata,0,10);
+		memcpy(Lt8900_Txdata,(uint8_t *)&m_w2m_controlMcu.status_w,5);
+		Lt8900_Txdata[1]=rand()%255+1;
+		Lt8900_Txdata[2]=MATCODE_CONTROL_CMD;
+		LT_TxData();
+	}
+	else
+	{
+		memcpy(Lt8900_Txdata,0,10);
+		memcpy(Lt8900_Txdata,(uint8_t *)&m_w2m_controlMcu.status_w,5);	
+		Get_LEDStatus(Lt8900_Txdata);
+		Lt8900_Txdata[2]=Lt8900_Txdata[2]&0x0f;
+		if(Lt8900_Txdata[0]==0)
+		{
+			LEDGroup_Status=0;
+			return;
+		}
+
+		LT_TxData();
+	}
+}
+
+/*******************************************************************************
+* Function Name  : Set_LEDStatus
+* Description    : LED租控数据存储
+* Input          : None
+* Output         : None
+* Return         : None
+* Attention		   : 	1、最多四组；
+						2、每组最多控制10盏灯；
+						3、数据为0，表示不存在；
+*******************************************************************************/
+
+void	Set_LEDStatus(u8*Char,u8 cmd)
+{
+	u8 ch[11]={0};
+#if 0
+	if(m_w2m_controlMcu.status_w.device_id==0x01)
+	{
+		AT24CXX_Write(AT24CXX_DEVICE_GROUPLED1_ADDR+2*LEDGroup_MatchCode_Status,(u8 *)Char,2);
+	}
+	else if(m_w2m_controlMcu.status_w.device_id==0x02)
+	{
+		AT24CXX_Write(AT24CXX_DEVICE_GROUPLED2_ADDR+2*LEDGroup_MatchCode_Status,(u8 *)Char,2);
+	}
+	else if(m_w2m_controlMcu.status_w.device_id==0x03)
+	{
+		AT24CXX_Write(AT24CXX_DEVICE_GROUPLED3_ADDR+2*LEDGroup_MatchCode_Status,(u8 *)Char,2);
+	}
+	else 
+	{
+		AT24CXX_Write(AT24CXX_DEVICE_GROUPLED4_ADDR+2*LEDGroup_MatchCode_Status,(u8 *)Char,2);
+	}
+#endif
+	if(cmd==MATCODE_CONTROL_CMD)
+	{
+		AT24CXX_Read(AT24CXX_DEVICE_GROUPLED1_ADDR+21*(m_w2m_controlMcu.status_w.device_id-1),(u8 *)ch,1);
+		if(ch[0]>9)
+		{
+			ch[0]=0;
+		}
+		AT24CXX_Write(AT24CXX_DEVICE_GROUPLED1_ADDR+21*(m_w2m_controlMcu.status_w.device_id-1)+2*ch[0]+1,(u8 *)Char,2);
+		ch[0]++;
+		AT24CXX_Write(AT24CXX_DEVICE_GROUPLED1_ADDR+21*(m_w2m_controlMcu.status_w.device_id-1),(u8 *)ch,1);
+	}
+	else if(cmd==ERASURE_CONTROL_CMD)
+	{
+		AT24CXX_Write(AT24CXX_DEVICE_GROUPLED1_ADDR+21*(m_w2m_controlMcu.status_w.device_id-1),(u8 *)ch,11);
+	}
+}
+/*******************************************************************************
+* Function Name  : Get_LEDStatus
+* Description    : LED租控数据获取
+* Input          : None
+* Output         : None
+* Return         : None
+* Attention		   : 	1、最多四组；
+						2、每组最多控制10盏灯；
+						3、数据为0，表示不存在；
+*******************************************************************************/
+
+void	Get_LEDStatus(u8*Char)
+{
+	if(LEDGroup_MatchCode_Status<10)
+	{
+#if 0
+		if(m_w2m_controlMcu.status_w.device_id==0x01)
+		{
+			AT24CXX_Read(AT24CXX_DEVICE_GROUPLED1_ADDR+2*LEDGroup_MatchCode_Status,(u8 *)Char,2);
+		}
+		else if(m_w2m_controlMcu.status_w.device_id==0x02)
+		{
+			AT24CXX_Read(AT24CXX_DEVICE_GROUPLED2_ADDR+2*LEDGroup_MatchCode_Status,(u8 *)Char,2);
+		}
+		else if(m_w2m_controlMcu.status_w.device_id==0x03)
+		{
+			AT24CXX_Read(AT24CXX_DEVICE_GROUPLED3_ADDR+2*LEDGroup_MatchCode_Status,(u8 *)Char,2);
+		}
+		else 
+		{
+			AT24CXX_Read(AT24CXX_DEVICE_GROUPLED4_ADDR+2*LEDGroup_MatchCode_Status,(u8 *)Char,2);
+		}
+#endif
+		AT24CXX_Read(AT24CXX_DEVICE_GROUPLED1_ADDR+21*(m_w2m_controlMcu.status_w.device_id-1)+2*LEDGroup_MatchCode_Status+1,(u8 *)Char,2);
+	}
+	else
+	{
+		Char[0]=0;
+		Char[1]=0;
+	}
+}	
+void RetryTaskInit(void)
+{
+}
+void RetryTask(void)
+{
+}

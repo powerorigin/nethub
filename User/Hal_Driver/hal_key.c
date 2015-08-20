@@ -11,7 +11,6 @@ extern m2w_mcuStatus			m_m2w_mcuStatus;
 extern m2w_setModule			m_m2w_setModule;
 extern pro_commonCmd			m_pro_commonCmd;
 extern int								SN;		
-extern uint32_t						wait_wifi_status;
 extern uint8_t            wifi_status;
 
 uint16_t Key_Return = NO_KEY;           	//按键返回值
@@ -27,6 +26,11 @@ uint16_t Key_Return = NO_KEY;           	//按键返回值
 void KEY_GPIO_Init(void)
 {
 	GPIO_InitTypeDef GPIO_InitStructure;
+
+
+	EXTI_InitTypeDef   EXTI_InitStructure;  
+ 	NVIC_InitTypeDef NVIC_InitStructure;
+	
 	RCC_APB2PeriphClockCmd(GPIO_KEY1_CLK | GPIO_KEY2_CLK | GPIO_KEY3_CLK | GPIO_KEY4_CLK, ENABLE);
 	
 	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
@@ -43,7 +47,24 @@ void KEY_GPIO_Init(void)
 	
 	GPIO_InitStructure.GPIO_Pin = GPIO_KEY4_PIN;
 	GPIO_Init(GPIO_KEY4_PORT, &GPIO_InitStructure);
+#if 0
+		GPIO_EXTILineConfig(GPIO_PortSourceGPIOB, GPIO_PinSource13); //设定外设中断线。
+		
 	
+    EXTI_ClearITPendingBit(EXTI_Line13);       //清除线路挂起位  
+	/* Configure EXTI0 line */    
+	EXTI_InitStructure.EXTI_Line = EXTI_Line13;     //设置中断类型   
+	EXTI_InitStructure.EXTI_Mode = EXTI_Mode_Interrupt;    
+	EXTI_InitStructure.EXTI_Trigger = EXTI_Trigger_Falling;    //上升沿触发   
+	EXTI_InitStructure.EXTI_LineCmd = ENABLE;   
+	EXTI_Init(&EXTI_InitStructure);
+
+	NVIC_InitStructure.NVIC_IRQChannel = EXTI15_10_IRQn;      //设置中断优先级    
+	NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 2;   
+	NVIC_InitStructure.NVIC_IRQChannelSubPriority = 2;   
+	NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;   
+	NVIC_Init(&NVIC_InitStructure);
+#endif	
 }
 
 /*******************************************************************************
@@ -134,6 +155,22 @@ void KeyHandle(void)
 		//	OSTimeDlyHMSM(0,0,0,100); 	//500ms延时，释放CPU控制权
 			Key_Return = 0;
 		}
+		else if(Key_Return & KEY_UP) 
+		{
+			m_m2w_setModule.config_info = 0x02;		//air link
+			//wifi_status = 1;
+			m_rf_send.data[0]=0x10;
+			m_rf_send.data[1]=0xE9;
+			m_rf_send.data[2]=0x01;
+			m_rf_send.data[3]=0x00;
+			m_rf_send.data[4]=0x00;
+
+			m_rf_send.data[5] =crc8_check(&m_rf_send.data[0],5);
+			Send_Byte(6,REMOTECONTROL,RFSENDRFQUENCY);
+			m_rf_send.data[0] = 0;
+		}
+		
+		Key_Return = 0;
  	}
  	if(Key_Return & PRESS_KEY2)
  	{
@@ -141,14 +178,30 @@ void KeyHandle(void)
 		{
 			m_m2w_setModule.config_info = 0x01;		//soft ap
 	//		LED_CONFIG_ON;	
-			wifi_status = 1;
-			wait_wifi_status = 1;													  
+			//wifi_status = 1;
+
+				m_rf_send.data[0]=0x10;
+			m_rf_send.data[1]=0xE9;
+			m_rf_send.data[2]=0x04;
+			m_rf_send.data[3]=0x00;
+			m_rf_send.data[4]=0x00;
+
+			m_rf_send.data[5] =crc8_check(&m_rf_send.data[0],5);
+			Send_Byte(6,REMOTECONTROL,RFSENDRFQUENCY);
+			m_rf_send.data[0] = 0;
 		}
 		else if(Key_Return & KEY_UP) 
 		{
 			m_m2w_setModule.config_info = 0x02;		//air link
 			wifi_status = 1;
-			wait_wifi_status = 1;
+			m_rf_send.data[0]=0x10;
+			m_rf_send.data[1]=0xE9;
+			m_rf_send.data[2]=0x01;
+			m_rf_send.data[3]=0x01;
+			m_rf_send.data[4]=0x00;
+			m_rf_send.data[5] =crc8_check(&m_rf_send.data[0],5);
+			Send_Byte(6,REMOTECONTROL,RFSENDRFQUENCY);
+			m_rf_send.data[0] = 0;
 		}
 		else
 		{
@@ -160,66 +213,8 @@ void KeyHandle(void)
 		m_m2w_setModule.sum = CheckSum((uint8_t *)&m_m2w_setModule, sizeof(m2w_setModule));
 		SendToUart((uint8_t *)&m_m2w_setModule, sizeof(m2w_setModule), 1);
 		
-		delay_us(50000);		
-//		OSTimeDlyHMSM(0,0,0,500); 	//500ms延时，释放CPU控制权
+		//delay_us(50000);		
+		OSTimeDlyHMSM(0,0,0,500); 	//500ms延时，释放CPU控制权
 		Key_Return = 0;
 	} 
-
- /*	if(Key_Return & PRESS_KEY3)
- 	{
-		if(Key_Return & KEY_LONG)
-		{
-//			m_m2w_mcuStatus.status_r.alert_byte = 0x01;		//alert 1
-			LED_RGB_Control(50,0,0);	
-			LED_RGB_Control(0,0,0);	
-		}
-		else if(Key_Return & KEY_UP)
-		{
-//			m_m2w_mcuStatus.status_r.fault_byte = 0x03;		//fault 1 and 2
-			LED_RGB_Control(0,50,0);	
-			LED_RGB_Control(0,0,0);	
-//			IrTransferdata();
-		}
-		else
-		{
-			Key_Return = 0;
-			return ;
-		}
-	
-		ReportStatus(REPORT_STATUS);
-//		m_m2w_mcuStatus.status_r.alert_byte = 0x00;			//clean the alert
-//		m_m2w_mcuStatus.status_r.fault_byte = 0x00;			//clean the fault
-		OSTimeDlyHMSM(0,0,0,500); 	//500ms延时，释放CPU控制权
-		Key_Return = 0;
-	}		
-	
-	 if(Key_Return & PRESS_KEY4)
- 	{
-		if(Key_Return & KEY_LONG)
-		{
-//			m_m2w_mcuStatus.status_r.alert_byte = 0x02;		//alert 2
-			LED_RGB_Control(50,0,0);	
-			LED_RGB_Control(0,0,0);	
-			
-		}
-		else if(Key_Return & KEY_UP)
-		{
-//			m_m2w_mcuStatus.status_r.fault_byte = 0x0C;		//fault 3 and 4
-			LED_RGB_Control(0,50,0);	
-			LED_RGB_Control(0,0,0);	
-	//		Irstudydata();
-   
-		}
-		else
-		{
-			Key_Return = 0;
-			return ;
-		}
-	
-//		ReportStatus(REPORT_STATUS);
-//		m_m2w_mcuStatus.status_r.alert_byte = 0x00;			//clean the alert
-//		m_m2w_mcuStatus.status_r.fault_byte = 0x00;			//clean the fault
-		OSTimeDlyHMSM(0,0,0,500); 	//500ms延时，释放CPU控制权
-		Key_Return = 0;
-	}	*/	
 }

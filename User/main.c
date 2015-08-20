@@ -27,15 +27,22 @@
 #include "ht138x.h"
 #include "led.h"
 
+#include "time.h"
 
-static  OS_STK  message_task_stk[MESSAGE_TASK_STK_SIZE];   //开辟任务堆栈
+#define STM32_FLASH_BASE 0x0800e000 	//STM32 FLASH的起始地址
+
+static  OS_STK  Start_Task_Stk[START_TASK_STK_SIZE];    //开辟任务堆栈
+static  OS_STK  Message_Task_Stk[MESSAGE_TASK_STK_SIZE];   //开辟任务堆栈
+
+
 //static  OS_STK  key_task_stk[KEY_TASK_STK_SIZE];    //开辟任务堆栈
 static  OS_STK  checkstatus_task_stk[CHECKSTATUS_TASK_STK_SIZE];    //开辟任务堆栈
-//static  OS_STK  rf_heart_task_stk[RFHEART_TASK_STK_SIZE];    //开辟任务堆栈
+
 static  OS_STK  rf_receive_task_stk[RFRECEIVE_TASK_STK_SIZE];    //开辟任务堆栈
 static  OS_STK  rf_send_task_stk[RFSEND_TASK_STK_SIZE];    //开辟任务堆栈
 
 OS_EVENT  *message_event,*rf_receive_event,*rf_send_event;
+
 //OS_STK_DATA  stk_data;
 INT8U err;
 
@@ -53,8 +60,13 @@ uint8_t 									wait_ack_time;
 uint8_t 									report_status_idle_time;
 uint32_t									SN;
 uint8_t 									cmd_flag1, cmd_flag2;
-uint32_t									wait_wifi_status;
-uint8_t                   wifi_status;
+uint8_t                   	wifi_status;
+uint8_t                   	LEDGroup_Status;
+uint16_t				  	LEDGroup_Wait_Status;
+uint8_t				  		LEDGroup_MatchCode_Status;
+uint8_t 					Send_flag;
+uint8_t 					urf[20][2]; 
+
 
 pro_commonCmd							m_pro_commonCmd;							//通用命令，心跳、ack等可以复用此帧
 m2w_returnMcuInfo					m_m2w_returnMcuInfo;					//返回mcu信息帧
@@ -64,8 +76,6 @@ m2w_mcuStatus							m_m2w_mcuStatus;							//当前最新的mcu状态帧
 m2w_mcuStatus							m_m2w_mcuStatus_reported;			//上次发送的mcu状态，当与最新的mcu状态不同时，需要上报；
 w2m_reportModuleStatus		m_w2m_reportModuleStatus;			//wifi模块上报状态帧
 pro_errorCmd							m_pro_errorCmd;								//错误命令帧
-
-
  
 int	McuStatusInit()
 {
@@ -76,7 +86,6 @@ int	McuStatusInit()
 	uart_Count = 0;
 	cmd_flag = 0;
 	cmd_len = 0 ;	
-	wait_wifi_status = 0;
 	wifi_status= 0;
 	
 	memset(uart_buf, 0, 256);
@@ -130,10 +139,25 @@ int	McuStatusInit()
 
 void  Mcu_Data_Init(void)
 {
+	u8 i;
+	OS_CPU_SR  cpu_sr;
 	AT24CXX_Check();
 	AT24CXX_Read(AT24CXX_DEVICE_LIST_ADDR,(u8 *)rf_device_list,sizeof(rf_device_list));	
+	for(i=0;i<MAX_DEVICE_NUMBER;i++)
+	{
+		if(rf_device_list[i][CLASS] != 0x10 || rf_device_list[i][ID] == 0)
+		{
+			for(;i<MAX_DEVICE_NUMBER;i++)
+			{	
+				memset(&rf_device_list[i],0,2);	
+			}
+			AT24CXX_Write(AT24CXX_DEVICE_LIST_ADDR,(u8 *)rf_device_list,sizeof(rf_device_list));
+			break;
+		}
+	}
+
 	AT24CXX_Read(AT24CXX_TIME_ADDR,&timer_tab.timersec,sizeof(timer_tab));	
-	Set_Timer();	
+	Set_Timer();
 }
 void Wdt_Init(void)
 {
@@ -154,12 +178,12 @@ void Wdt_Init(void)
 void  BSP_Init (void)
 {
 	//系统初始化
-	SystemInit();
+	//SystemInit();
 	systick_init();     /* Initialize the SysTick. */  
 	Wdt_Init();
  	UART_Configuration();
 	KEY_GPIO_Init();
-	TIM3_Int_Init(100,7199);
+	TIM3_Int_Init(50,7199);
 	Rf_Data_Init();
 	RF_Init();
 	
@@ -171,17 +195,20 @@ void  BSP_Init (void)
 			
 	//初始化各类型数据帧
 	McuStatusInit();
+	srand(TIM_GetCounter(TIM3));
+
 	//Mcu_Data_Init();
 	//
 }
 
 void App_TaskIdleHook(void)
 {
-	 Rf_Receive();																											//RF接收
-	 MessageHandle();																										//串口数据
-	 LT_RxData();																												//2.4G接收
-	 KeyHandle();																												//按键
-	 IWDG_ReloadCounter(); 																							//喂狗
+	// Rf_Receive();		//RF接收
+	// MessageHandle();		//串口数据
+	 //LT_RxData();																												//2.4G接收
+	// LT_RetryData();
+	// KeyHandle();			//按键
+	// IWDG_ReloadCounter();  //喂狗
 }		   
 
 static void systick_init(void) 
@@ -200,7 +227,8 @@ static void checkstatus_task(void *p_arg)
 	{	 
 		 //检查系统最新状态
 		 CheckStatus();
-		 OSTimeDlyHMSM(0,1,0,0); 	//1分钟延时，释放CPU控制权
+		// Rf_Heart_package();
+		 OSTimeDlyHMSM(0,3,0,0); 	//1分钟延时，释放CPU控制权
 	}
 }
 /*					 
@@ -215,19 +243,9 @@ static void key_task(void *p_arg)
 //		 OSTimeDlyHMSM(0,0,1,0); 	//1s延时，释放CPU控制权
 	}
 }
-				   
+*/				   
 
-static void rf_heart_task(void *p_arg)	  //RF发送心跳包
-{
- 	p_arg=p_arg;      //防止编译器产生警告
-	while(1)
-	{	 
-	   Rf_Heart_package();
-		 OSTimeDlyHMSM(0,3,0,0); 	//1s延时，释放CPU控制权
-		 
-	}
-}
-*/
+
 static void rf_send_task(void *p_arg)
 {   
 //	OS_CPU_SR  cpu_sr;
@@ -236,38 +254,81 @@ static void rf_send_task(void *p_arg)
 	
 
 	while(1)
-	{	 
-		  if(Pop(&rf_send_queue,m_rf_send.data))
-		  {				
-				 if(m_rf_send.data[0]!= 0)
-				 {
-					    if(m_rf_send.data[2] == 0x02)
-							{
-									for(i=1;i<13;i++)
-									{
-										  m_rf_send.data[3] = i;
-											m_rf_send.data[5] =crc8_check(&m_rf_send.data[0],5);
-										  Send_Byte(6,REMOTECONTROL,RFSENDRFQUENCY);
-									}
-							}
-							else if(m_rf_send.data[2] == 0x03)
-							{
-									for(i=1;i<8;i++)
-									{
-										  m_rf_send.data[3] = i;
-											m_rf_send.data[5] =crc8_check(&m_rf_send.data[0],5);
-										  Send_Byte(6,REMOTECONTROL,RFSENDRFQUENCY);
-									}
-							}
-							else
-							{
-									m_rf_send.data[5] =crc8_check(&m_rf_send.data[0],5);
-									Send_Byte(6,REMOTECONTROL,RFSENDRFQUENCY);
-									m_rf_send.data[0] = 0;
-							}
-				}	
-		  }
-		  else OSSemPend(rf_send_event,0,&err);
+	{	
+	#if 1
+		if(Pop(&rf_send_queue,m_rf_send.data))
+		{				
+			if(m_rf_send.data[0]!= 0)
+			{
+				Send_flag=1;
+				if(m_rf_send.data[2] == 0x02)
+				{
+					for(i=1;i<13;i++)
+					{
+						m_rf_send.data[3] = i;
+						m_rf_send.data[5] =crc8_check(&m_rf_send.data[0],5);
+						Send_Byte(6,REMOTECONTROL,RFSENDRFQUENCY);
+						if(Send_flag==2)
+						{
+							break;
+						}
+					}
+				}
+				else if(m_rf_send.data[2] == 0x03)
+				{
+					for(i=1;i<8;i++)
+					{
+						m_rf_send.data[3] = i;
+						m_rf_send.data[5] =crc8_check(&m_rf_send.data[0],5);
+						Send_Byte(6,REMOTECONTROL,RFSENDRFQUENCY);
+						if(Send_flag==2)
+						{
+							break;
+						}
+					}
+				}
+				else
+				{
+					m_rf_send.data[5] =crc8_check(&m_rf_send.data[0],5);
+					Send_Byte(6,REMOTECONTROL,RFSENDRFQUENCY);
+					m_rf_send.data[0] = 0;
+				}
+				Send_flag=0;
+			}	
+		}
+		else OSSemPend(rf_send_event,0,&err);
+		  #else
+		OSSemPend(rf_send_event,0,&err);
+		  	
+		if(m_rf_send.data[0]!= 0)
+		{
+			if(m_rf_send.data[2] == 0x02)
+			{
+				for(i=1;i<13;i++)
+				{
+					m_rf_send.data[3] = i;
+					m_rf_send.data[5] =crc8_check(&m_rf_send.data[0],5);
+					Send_Byte(6,REMOTECONTROL,RFSENDRFQUENCY);
+				}
+			}
+			else if(m_rf_send.data[2] == 0x03)
+			{
+				for(i=1;i<8;i++)
+				{
+					m_rf_send.data[3] = i;
+					m_rf_send.data[5] =crc8_check(&m_rf_send.data[0],5);
+					Send_Byte(6,REMOTECONTROL,RFSENDRFQUENCY);
+				}
+			}
+			else
+			{
+				m_rf_send.data[5] =crc8_check(&m_rf_send.data[0],5);
+				Send_Byte(6,REMOTECONTROL,RFSENDRFQUENCY);
+				m_rf_send.data[0] = 0;
+			}
+		}	
+
+		  #endif
 	}
 }
 
@@ -282,53 +343,116 @@ static void rf_receive_task(void *p_arg)   //RF接收数据处理
 	}
 }
 
-static void message_task(void *p_arg) 
+
+u8 STMFLASH_ReadHalfWord(u32 faddr)
+{
+	return *(vu8*)faddr; 
+}
+
+static void Message_Task(void *p_arg)   
+{
+ 	p_arg=p_arg;      //防止编译器产生警告
+ 	//u8 err;
+	while(1)
+	{	 
+		 OSSemPend(message_event,0,&err);
+		 MessageHandle();		//串口数据
+		 CheckStatus();
+		 	// Rf_Receive();		//RF接收
+	// MessageHandle();		//串口数据
+	 //LT_RxData();																												//2.4G接收
+	// LT_RetryData();
+	// KeyHandle();			//按键
+	// IWDG_ReloadCounter();  //喂狗
+	}
+}
+
+static void Start_Task(void *p_arg) 
 { 
 	 //   systick_init();     /* Initialize the SysTick. */ 
-	//	message_event =  OSSemCreate(0);
+	static u16 time_l=20;
+		//u8 buf[10],LEDGrou;
+	 	u8 Buf[]={0x10 ,0xE9 ,0x01 ,0x01 ,0xa0 ,0x14 ,0xa7 ,0x70 ,0x00 ,0x00 ,0x00 ,0x00 },BUD[12],tmp;
 		DHT11_Init();
 		Mcu_Data_Init();
+
+		message_event =  OSSemCreate(0);
 		rf_receive_event =  OSSemCreate(0);
 		rf_send_event = OSSemCreate(0);
-	//	OSSemPend(message_event,0,&err);
+	
 	//	OSSemPend(key_event,0,&err);
 		/*创建新任务*/					  					
 	//	OSTaskCreateExt(key_task, 0, &key_task_stk[KEY_TASK_STK_SIZE-1], KEY_TASK_PRIO,KEY_TASK_PRIO,&key_task_stk[0],
 	//					KEY_TASK_STK_SIZE,(void *)0,OS_TASK_OPT_STK_CHK | OS_TASK_OPT_STK_CLR); 
-	  	
-	//	OSTaskCreateExt(rf_heart_task, 0, &rf_heart_task_stk[RFHEART_TASK_STK_SIZE-1], RFHEART_TASK_PRIO,RFHEART_TASK_PRIO,&rf_heart_task_stk[0],
-	//					RFHEART_TASK_STK_SIZE,(void *)0,OS_TASK_OPT_STK_CHK | OS_TASK_OPT_STK_CLR);
-
+	  	//OSSchedLock();
+	#if 1
 		OSTaskCreateExt(rf_receive_task, 0, &rf_receive_task_stk[RFRECEIVE_TASK_STK_SIZE-1], RFRECEIVE_TASK_PRIO,RFRECEIVE_TASK_PRIO,&rf_receive_task_stk[0],
 						RFRECEIVE_TASK_STK_SIZE,(void *)0,OS_TASK_OPT_STK_CHK | OS_TASK_OPT_STK_CLR);
 
 	    OSTaskCreateExt(rf_send_task, 0, &rf_send_task_stk[RFSEND_TASK_STK_SIZE-1], RFSEND_TASK_PRIO,RFSEND_TASK_PRIO,&rf_send_task_stk[0],
 						RFSEND_TASK_STK_SIZE,(void *)0,OS_TASK_OPT_STK_CHK | OS_TASK_OPT_STK_CLR);
+	#endif
 
 	    OSTaskCreateExt(checkstatus_task, 0, &checkstatus_task_stk[CHECKSTATUS_TASK_STK_SIZE-1],
-						 CHECKSTATUS_TASK_PRIO,CHECKSTATUS_TASK_PRIO,&checkstatus_task_stk[0],
-						CHECKSTATUS_TASK_STK_SIZE,(void *)0,OS_TASK_OPT_STK_CHK | OS_TASK_OPT_STK_CLR); 
+			CHECKSTATUS_TASK_PRIO,CHECKSTATUS_TASK_PRIO,&checkstatus_task_stk[0],
+			CHECKSTATUS_TASK_STK_SIZE,(void *)0,OS_TASK_OPT_STK_CHK | OS_TASK_OPT_STK_CLR); 
 		
+    	//OSTaskCreateExt(Message_Task, (void *)0, 
+          //	&Message_Task_Stk[MESSAGE_TASK_STK_SIZE - 1], 
+          	//MESSAGE_TASK_PRIO,MESSAGE_TASK_PRIO,&Message_Task_Stk[0],MESSAGE_TASK_STK_SIZE,(void *)0,OS_TASK_OPT_STK_CHK | OS_TASK_OPT_STK_CLR); 
+		//OSSchedUnlock();
+
+	#if 0
+		FLASH_Unlock(); 
+		FLASH_ErasePage(STM32_FLASH_BASE);//擦除这个扇区
+
+		FLASH_ProgramHalfWord(STM32_FLASH_BASE,0xd3);
+		Buffer[0]=STMFLASH_ReadHalfWord(STM32_FLASH_BASE);//读取2个字节.
+		Buffer[1]=STMFLASH_ReadHalfWord(STM32_FLASH_BASE+1);//读取2个字节.
+		Buffer[0]=pBuffer;
+		Buffer[1]=pBuffer>>8;
+		FLASH_Lock();//上锁
+	#endif
+		//for(LEDGrou=0;LEDGrou<5;LEDGrou++)
+		//{
+		//AT24CXX_Write(0xc2,Buf,12);
+		//}
+		//for(LEDGrou=0;LEDGrou<5;LEDGrou++)
+		//{	
+		//AT24CXX_Read(0xc2,BUD,12);
+		//}
+		//AT24CXX_Read(AT24CXX_DEVICE_GROUPLED4_ADDR+2*1,(u8 *)buf,2);
+		//m_w2m_controlMcu.status_w.device_sort=0x20;
+		//m_w2m_controlMcu.status_w.device_id=0x10;
+		//m_w2m_controlMcu.status_w.device_cmd=0x11;
+		//LEDStatus();
+
+
 		while(1) 
-		{
-			 // OSSemPend(message_event,0,&err);			
-			//	KeyHandle();	
-				Rf_Heart_package();
-				OSTimeDlyHMSM(0,3,0,0); 	//1s延时，释放CPU控制权
+		{	
+			//Rf_Heart_package();
+			//OSTimeDlyHMSM(0,3,0,0); 	//1s延时，释放CPU控制权	
+			MessageHandle();		//串口数据
+	 		LT_RxData();																												//2.4G接收
+			LT_RetryData();
+			//CheckStatus();
+			Rf_Receive();		//RF接收
+			KeyHandle();			//按键
+			IWDG_ReloadCounter();  //喂狗
+			
 		}        
 }
 //u8 rxdata[4];			  
 //extern u8  RegH,RegL;
 int main(void)
-   {
-      BSP_Init ();
-			OSInit(); 
-// g_TxMbox=OSMboxCreate((void*)0); //创建全局信号-消息邮箱
-        OSTaskCreateExt(message_task, (void *)0, 
-              &message_task_stk[MESSAGE_TASK_STK_SIZE - 1], 
-              MESSAGE_TASK_PRIO,MESSAGE_TASK_PRIO,&message_task_stk[0],MESSAGE_TASK_STK_SIZE,(void *)0,OS_TASK_OPT_STK_CHK | OS_TASK_OPT_STK_CLR); 
-         OSStart(); 
-         return 0; 		
+{
+	BSP_Init ();
+	OSInit(); 
+	OSTaskCreateExt(Start_Task, 0, &Start_Task_Stk[START_TASK_STK_SIZE-1], START_TASK_PRIO,START_TASK_PRIO,&Start_Task_Stk[0],
+		START_TASK_STK_SIZE,(void *)0,OS_TASK_OPT_STK_CHK | OS_TASK_OPT_STK_CLR);
+
+	OSStart(); 
+    return 0; 		
 /*		 	
 	while(1)
 	{

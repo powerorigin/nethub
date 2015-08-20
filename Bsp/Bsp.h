@@ -10,7 +10,7 @@
 #define  LED1     0
 #define  LED2     1		 */
 
-void     BSP_Init(void);
+
 //void     led_on(uint32_t n); 
 //void     led_off(uint32_t n);
  

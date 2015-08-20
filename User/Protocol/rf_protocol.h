@@ -24,7 +24,7 @@
 #define ELECTRIC_I             0x06
 #define ELECTRIC_P             0x08
 
-#define MAX_DEVICE_NUMBER      20	         //最大设备数
+#define MAX_DEVICE_NUMBER      10	         //最大设备数
 #define DEVICE_DATA_LEN        2
 
 #define POWER_SOCKET_CLASS     0x10
@@ -38,6 +38,7 @@ extern uint8_t  temperature_humidity_old[2];
 
 #define RF_INQUIRE_SUCCESS          1
 #define RF_SEND_ING                 2
+#define RF_SEND_SUCCESS 			3
 
 void Rf_Heart_package(void);
 void Rf_Receive_Process(void);

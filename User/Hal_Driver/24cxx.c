@@ -62,8 +62,8 @@ void AT24CXX_WriteOneByte(u16 WriteAddr,u8 DataToWrite)
 	IIC_Send_Byte(DataToWrite);     //发送字节							   
 	IIC_Wait_Ack();  		    	   
     IIC_Stop();//产生一个停止条件 
-//	OSTimeDlyHMSM(0,0,0,10); 	//1s延时，释放CPU控制权
-	delay_us(10000);
+	//OSTimeDlyHMSM(0,0,0,10); 	//1s延时，释放CPU控制权
+	delay_us(2000);
 	AT24CXX_CS = 1;
 //	delay_ms(10);	 
 }
@@ -124,11 +124,16 @@ u8 AT24CXX_Check(void)
 //NumToRead:要读出数据的个数
 void AT24CXX_Read(u16 ReadAddr,u8 *pBuffer,u16 NumToRead)
 {
+	OS_CPU_SR  cpu_sr;
+
+	//OS_ENTER_CRITICAL();
+
 	while(NumToRead)					    
 	{
 		*pBuffer++=AT24CXX_ReadOneByte(ReadAddr++);	
 		NumToRead--;
 	}
+	//OS_EXIT_CRITICAL();
 }  
 //在AT24CXX里面的指定地址开始写入指定个数的数据
 //WriteAddr :开始写入的地址 对24c02为0~255
@@ -136,12 +141,18 @@ void AT24CXX_Read(u16 ReadAddr,u8 *pBuffer,u16 NumToRead)
 //NumToWrite:要写入数据的个数
 void AT24CXX_Write(u16 WriteAddr,u8 *pBuffer,u16 NumToWrite)
 {
+	OS_CPU_SR  cpu_sr;
+
+	//OS_ENTER_CRITICAL();
+
 	while(NumToWrite--)
 	{
 		AT24CXX_WriteOneByte(WriteAddr,*pBuffer);
 		WriteAddr++;
 		pBuffer++;
 	}
+	
+	//OS_EXIT_CRITICAL();
 }
  
 

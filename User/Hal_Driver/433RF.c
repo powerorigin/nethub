@@ -18,11 +18,13 @@
 
 rf_send	   m_rf_send;
 rf_receive m_rf_receive;
+extern volatile uint8_t  rf_inquire_flag; 
 
 extern m2w_mcuStatus							m_m2w_mcuStatus;
 extern OS_EVENT  *message_event,*rf_receive_event;
 uint8_t	  rf_state;
-uint8_t  send_num = 0;
+
+
 u8 const Rf_code[10][3] = {0xfb,0xff,0x6f,
                            0xfb,0xff,0x5f,
 						   0xfb,0xff,0xef,
@@ -79,7 +81,7 @@ static void  TIM4_Init()
 	RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM4, ENABLE); 						//时钟使能
 	
 	//定时器TIM4初始化					  
-	TIM_TimeBaseStructure.TIM_Period = 20000; 												//设置在下一个更新事件装入活动的自动重装载寄存器周期的值	
+	TIM_TimeBaseStructure.TIM_Period = 40000; 												//设置在下一个更新事件装入活动的自动重装载寄存器周期的值	
 	TIM_TimeBaseStructure.TIM_Prescaler = 71; 											//设置用来作为TIMx时钟频率除数的预分频值
 	TIM_TimeBaseStructure.TIM_ClockDivision = TIM_CKD_DIV1; 				//设置时钟分割:TDTS = Tck_tim
 	TIM_TimeBaseStructure.TIM_CounterMode = TIM_CounterMode_Up; 		//TIM向上计数模式
@@ -93,6 +95,8 @@ static void  TIM4_Init()
 	NVIC_InitStructure.NVIC_IRQChannelSubPriority = 3;  						//从优先级3级
 	NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE; 								//IRQ通道被使能
 	NVIC_Init(&NVIC_InitStructure);  																//初始化NVIC寄存器
+	TIM_Cmd(TIM4, ENABLE);
+
 }
 
 static void  Rf_IO_Init()
@@ -104,8 +108,10 @@ static void  Rf_IO_Init()
 //	TIM_Cmd(TIM2, ENABLE);  	
 	
 
+	RCC_APB2PeriphClockCmd(RCC_APB2Periph_AFIO,ENABLE); //使能复用功能时钟
 
-    RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOB, ENABLE);  //开启IO 时钟   	
+    RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOB, ENABLE);  //开启IO 时钟   
+    RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA, ENABLE);  //开启IO 时钟  
 		/* Configure PA.00 pin as input floating */   
 	GPIO_InitStructure.GPIO_Pin = RF_DATA_PIN;     //设置IO模式   
 	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;   
@@ -115,27 +121,48 @@ static void  Rf_IO_Init()
 
 
 	GPIO_InitStructure.GPIO_Pin = RF_RECEIVE_PIN;     //设置IO模式   
-	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IN_FLOATING;    //必须要上拉
+	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IPU;    //必须要上拉
 	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;	
-	GPIO_Init(RF_DATA_PORT, &GPIO_InitStructure);  
-
+	GPIO_Init(RF_RECDATA_PORT, &GPIO_InitStructure);  
+#if 1
 	   /* Connect EXTI0 Line to PA.00 pin */    
-	GPIO_EXTILineConfig(GPIO_PortSourceGPIOB, GPIO_PinSource8); //设定外设中断线。
+	GPIO_EXTILineConfig(GPIO_PortSourceGPIOA, GPIO_PinSource11); //设定外设中断线。
 		
 	
-    EXTI_ClearITPendingBit(EXTI_Line8);       //清除线路挂起位  
+    EXTI_ClearITPendingBit(EXTI_Line11);       //清除线路挂起位  
 	/* Configure EXTI0 line */    
-	EXTI_InitStructure.EXTI_Line = EXTI_Line8;     //设置中断类型   
+	EXTI_InitStructure.EXTI_Line = EXTI_Line11;     //设置中断类型   
 	EXTI_InitStructure.EXTI_Mode = EXTI_Mode_Interrupt;    
 	EXTI_InitStructure.EXTI_Trigger = EXTI_Trigger_Rising_Falling;    //上升沿触发   
 	EXTI_InitStructure.EXTI_LineCmd = ENABLE;   
 	EXTI_Init(&EXTI_InitStructure);
 
-	NVIC_InitStructure.NVIC_IRQChannel = EXTI9_5_IRQn;      //设置中断优先级    
-	NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 3;   
+	NVIC_InitStructure.NVIC_IRQChannel = EXTI15_10_IRQn;      //设置中断优先级    
+	NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 2;   
 	NVIC_InitStructure.NVIC_IRQChannelSubPriority = 2;   
 	NVIC_InitStructure.NVIC_IRQChannelCmd = DISABLE;   
 	NVIC_Init(&NVIC_InitStructure);
+
+#else
+	GPIO_EXTILineConfig(GPIO_PortSourceGPIOB, GPIO_PinSource8); //éè?¨íaéè?D?????￡
+		
+	
+    EXTI_ClearITPendingBit(EXTI_Line8);       //??3y???·1ò?e??  
+	/* Configure EXTI0 line */    
+	EXTI_InitStructure.EXTI_Line = EXTI_Line8;     //éè???D??ààDí   
+	EXTI_InitStructure.EXTI_Mode = EXTI_Mode_Interrupt;    
+	EXTI_InitStructure.EXTI_Trigger = EXTI_Trigger_Rising_Falling;    //é?éy??′￥·￠   
+	EXTI_InitStructure.EXTI_LineCmd = ENABLE;   
+	EXTI_Init(&EXTI_InitStructure);
+
+	NVIC_InitStructure.NVIC_IRQChannel = EXTI9_5_IRQn;      //éè???D??ó??è??    
+	NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 3;   
+	NVIC_InitStructure.NVIC_IRQChannelSubPriority = 2;   
+	NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;   
+	NVIC_Init(&NVIC_InitStructure);
+#endif
+
+	// NVIC->ISER[40 >> 0x05] = (uint32_t)0x01 << (40 & (uint8_t)0x1F);
 }
 /****************************************************************************
 *   Function name ：crc8_check
@@ -163,109 +190,146 @@ uint8_t crc8_check(uint8_t *ptr,uint8_t len)
 	return crc8;								//返回CRC8校验码
 }
 
+uint8_t crc8_433check(uint8_t *ptr)
+{
+	uint8_t i,j=0;
+	uint8_t crc8=0;								//crc8校验码缓存
+	uint8_t len=m_rf_receive.data_len/8-1;
+	if(len==0)
+		return FALSE;
+	while(len--)
+	{
+		crc8 ^= ptr[j++];
+		for(i = 0;i < 8;i++)
+		{
+			if(crc8 & 0x80)
+				crc8 = (crc8 << 1) ^ 0x0131;
+			 else 
+				crc8 <<= 1;
+		}
+	}
+	if(ptr[len]==crc8)		
+	{
+		return TRUE;								//返回CRC8校验码
+	}
+	else
+	{
+		return FALSE;
+	}
+}
 
 u8 Send_Byte(u8 send_data_len, u8 remote_control_flag, u8 send_frequency)
 { 	
 /********同步头*************/
-//	static  uint8_t  send_num = 0;
- /*  while(rf_state != 0)
-   {
-   		OSTimeDlyHMSM(0,0,0,100); 	//等待100ms发送结束
-   }	*/
-	   rf_inquire_flag = RF_SEND_ING;
-	   send_num = 0;
-	   while(send_num < MAX_SEND_NUM && rf_inquire_flag != 0)
-	   {
-	        
-			m_rf_send.data_len = send_data_len;
-			m_rf_send.remote_flag =  remote_control_flag;
-			m_rf_send.frequency =  0;
-			m_rf_send.flag = RFSTART0;
-		
-			rf_state = RF_SEND_STATE;
-			RF_SET_DATA;
-			TIM_SetCounter(TIM2,65536 - A4);
-			TIM_Cmd(TIM2, ENABLE); 
-	
-			OSTimeDlyHMSM(0,0,0,600); 	//等待700ms反馈																															     
-			send_num++; 
-	    if(rf_inquire_flag == RF_INQUIRE_SUCCESS)
-			{
-				rf_inquire_flag = 0;
+	uint8_t  send_num;
 
-			    break;
-			}				
-			 
+   	u8 buf[2]={0xCC,0XCC};
+	rf_inquire_flag = RF_SEND_ING;
+	send_num = 0;
+	while(send_num < MAX_SEND_NUM && rf_inquire_flag != 0)
+	{
+	        
+		m_rf_send.data_len = send_data_len;
+		m_rf_send.remote_flag =  remote_control_flag;
+		m_rf_send.frequency =  0;
+		m_rf_send.flag = RFSTART0;
+		
+		UART1_SendBuf_DATA(buf,2);
+		UART1_SendBuf_DATA(m_rf_send.data,m_rf_send.data_len);
+		UART1_SendBuf_DATA(buf,2);
+		rf_state = RF_SEND_STATE;
+		RF_SET_DATA;
+		TIM_SetCounter(TIM2,65536 - 5000);
+		TIM_Cmd(TIM2, ENABLE); 	
+		OSTimeDlyHMSM(0,0,0,350); 	//等待700ms反馈																															     
+		send_num++; 
+	    if(rf_inquire_flag == RF_INQUIRE_SUCCESS)
+		{
+			rf_inquire_flag = 0;
+			   break;
 		}
-		if(rf_inquire_flag != 0)
+		else
 		{
-			memcpy(&m_m2w_mcuStatus.status_w,&m_rf_send.data[0],5);
-			m_m2w_mcuStatus.status_w.device_cmd = 0xff;
-			ReportStatus(REPORT_STATUS);
-		}							  
-		 rf_inquire_flag = 0;
-	/*	if(send_num == MAX_SEND_NUM)
-		{
-			
-		}  */
+			TIM_Cmd(TIM4, DISABLE);
+			NVIC->ICER[40 >> 0x05] =  (uint32_t)0x01 << (40 & (uint8_t)0x1F);
+		}
+			 
+	}
+	if(rf_inquire_flag != 0)
+	{
+		memcpy(&m_m2w_mcuStatus.status_w,&m_rf_send.data[0],5);
+		m_m2w_mcuStatus.status_w.device_cmd = 0xff;
+		ReportStatus(REPORT_STATUS);
+	}							  
+	rf_inquire_flag = 0;
 }	   
 
 void Rf_Receive(void)
 {
 	 NVIC_InitTypeDef NVIC_InitStructure;
+	
 
 	 static u8 last_state = 0;
 	 u16 time;
 	 OS_CPU_SR  cpu_sr;
-	 
-	 if(rf_state == 0)
-	 { 	    
-   		 if((GPIO_ReadInputDataBit(RF_DATA_PORT,RF_RECEIVE_PIN) == 0)&&(last_state == 1))
+#if 0
+	 if(rf_state==0)
+	 { 	  
+	 #if 0
+   		 if((GPIO_ReadInputDataBit(RF_RECDATA_PORT,RF_RECEIVE_PIN) == 0)&&(last_state == 1))
 		 {
 		   		TIM_SetCounter(TIM4,0);
-				TIM_Cmd(TIM4, ENABLE); 	
-					
+				TIM_Cmd(TIM4, ENABLE); 						
 				last_state = 0;
 
 		 }
-		 else  if((GPIO_ReadInputDataBit(RF_DATA_PORT,RF_RECEIVE_PIN) == 1)&&(last_state == 0))
+		 else  if((GPIO_ReadInputDataBit(RF_RECDATA_PORT,RF_RECEIVE_PIN) == 1)&&(last_state == 0))
 		 {
 		       last_state = 1;
 		       time = TIM_GetCounter(TIM4);
                
-			   	if(time > RFSTART_L_TIME && RFSTART_H_TIME > time)
-			   {					      
-			   	   /* Enable and set EXTI0 Interrupt to the lowest priority */   
-				//	EXTI->SWIER = EXTI_Line4;
-					    OS_ENTER_CRITICAL();                         /* Tell uC/OS-II that we are starting an ISR          */
-					EXTI_ClearITPendingBit(EXTI_Line8);       //清除线路挂起位  
-					NVIC->ISER[23 >> 0x05] = (uint32_t)0x01 << (23 & (uint8_t)0x1F);
-					TIM_ClearITPendingBit(TIM4, TIM_IT_Update );  		//清除TIMx更新中断标志
-										
-			//		TIM_Cmd(TIM4, ENABLE);
-			        OS_EXIT_CRITICAL();
-					TIM_SetCounter(TIM4,0); 	
-					rf_state = RF_RECEIVE_STATE;
+			   if(( 4000 < time ) && ( time < 7000 ))
+			   {					       
+					OS_ENTER_CRITICAL();                         /* Tell uC/OS-II that we are starting an ISR          */ 
+					TIM_ClearITPendingBit(TIM4, TIM_IT_Update );  		//清除TIMx更新中断标志										
+					TIM_SetCounter(TIM4,0); 
+					//TIM_Cmd(TIM4, ENABLE);
+					rf_state= RF_RECEIVE_STATE;	
+					EXTI_ClearITPendingBit(EXTI_Line11);       //清除线路挂起位 
+					NVIC->ISER[40 >> 0x05] = (uint32_t)0x01 << (40 & (uint8_t)0x1F);
+					//NVIC->ISER[23 >> 0x05] = (uint32_t)0x01 << (23 & (uint8_t)0x1F);
 					m_rf_receive.data_len = 0;
 					memset(m_rf_receive.data, 0, RFDATALEN);
+					OS_EXIT_CRITICAL();
+
 				       
 			   }
 			   else TIM_Cmd(TIM4, DISABLE);	
 		 }
+		 #endif
 	 }
 	 else if(rf_state == RF_RECEIVE_FINSH)
 	 {
+				//rf_state = 0;
+				#if 1
 				if(rf_receive_event->OSEventCnt == 0 && rf_receive_event->OSEventType == 0x03)
 				{
 							OSSemPost(rf_receive_event);
 				}
 				else
 				{
-						  rf_receive_event->OSEventCnt = 0;
-							rf_receive_event->OSEventType = 0x03;
-							OSSemPost(rf_receive_event);
+						//  rf_receive_event->OSEventCnt = 0;
+							//rf_receive_event->OSEventType = 0x03;
+							//OSSemPost(rf_receive_event);
 				}
+				#endif
 	 }
+
+	 #else
+
+
+
+	 	 #endif
 }
 /*	
 void Wireless_control(uint8_t *data)

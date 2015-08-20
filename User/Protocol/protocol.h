@@ -9,6 +9,16 @@
 #include "hal_temp_hum.h"
 #include "433RF.h"
 
+#define MATCODE_CONTROL_CMD     0x01		   //对码命令字
+#define ERASURE_CONTROL_CMD     0x02		   //擦除命令字
+#define READ_CONTROL_CMD      	0x03		   //读功能命令字-
+#define WRITE_CONTROL_CMD      	0x04		   //写功能命令字-
+
+#define GROUP_CONTROL_CMD      	0x10		   //组控
+#define SINGLE_CONTROL_CMD      0x00		   //单控
+
+
+
 #define LT8900_DATA      0x20		   //无线遥控器
 
 #define AT24CXX_DEVICE_LIST_ADDR		0x20		
@@ -44,7 +54,7 @@
 #define		SUB_CMD_REQUIRE_STATUS_ACK						0x03
 #define		SUB_CMD_REPORT_MCU_STATUS							0x04
   
-#define  	MAX_SEND_TIME                         20
+#define  	MAX_SEND_TIME                         40
 
 #define		PRO_VER																"00000004"
 #define		P0_VER																"00000004"
@@ -65,10 +75,10 @@ typedef struct	_pro_errorCmd										pro_errorCmd;
 
 __packed	struct	_status_writable
 {
-	uint8_t							device_sort;
-	uint8_t					        device_id;	
-	uint8_t							device_cmd;	
-	uint8_t					    	device_data[10];	
+	uint8_t							device_sort;//类别
+	uint8_t					        device_id;	//设备ID
+	uint8_t							device_cmd;	//命令字
+	uint8_t					    	device_data[10];//数据
 };
 
 __packed	struct	_status_readonly
@@ -152,6 +162,16 @@ void	SendToUart(uint8_t *buf, uint16_t packLen, uint8_t tag);
 void	ReportStatus(uint8_t tag);
 void	CheckStatus(void);
 uint8_t CheckSum(  uint8_t *buf,int packLen );
+
+void	LEDStatus(void);
+void	LT_LEDStatus(void);
+void	Set_LEDStatus(u8*Char,u8 cmd);
+void	Get_LEDStatus(u8*Char);	
+void RetryTaskInit(void);
+void RetryTask(void);
+
+
+
 
 #endif /*_PROTOCOL_H*/
 

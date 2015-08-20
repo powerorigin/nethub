@@ -74,6 +74,18 @@ void UART1_Send_DATA(uint8_t data)
 		while (USART_GetFlagStatus(USART1, USART_FLAG_TXE) == RESET);
 }
 
+
+void UART1_SendBuf_DATA(uint8_t* buf,uint16_t length)
+{
+#if 0
+	uint8_t i;
+	for(i=0;i<length;i++)
+	{								     
+		UART1_Send_DATA(buf[i]);	
+	}
+#endif
+}
+
 //不使用半主机模式, 如果没有这段，则需要在target选项中选择使用USE microLIB
 #if 1 
 #pragma import(__use_no_semihosting)

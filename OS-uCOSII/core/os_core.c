@@ -1758,7 +1758,7 @@ INT8U  OS_StrLen (INT8U *psrc)
 *                 power.
 *********************************************************************************************************
 */
-extern void App_TaskIdleHook(void);
+
 void  OS_TaskIdle (void *p_arg)
 {
 #if OS_CRITICAL_METHOD == 3                      /* Allocate storage for CPU status register           */
@@ -1773,7 +1773,6 @@ void  OS_TaskIdle (void *p_arg)
         OSIdleCtr++;
         OS_EXIT_CRITICAL();
         OSTaskIdleHook();                        /* Call user definable HOOK                           */
-		App_TaskIdleHook();
     }
 }
 /*$PAGE*/

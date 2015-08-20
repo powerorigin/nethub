@@ -90,67 +90,7 @@ void cc1100_Delay(uint8_t timeout)
  */
 void cc1100_Init(void)
 {
-/*    GPIO_Init(CCxxx0_CS_PORT, CCxxx0_CS_PIN, GPIO_MODE_OUT_PP_HIGH_SLOW);
-    GPIO_Init(CCxxx0_SCK_PORT, CCxxx0_SCK_PIN, GPIO_MODE_OUT_PP_LOW_FAST);
-    GPIO_Init(CCxxx0_SI_PORT, CCxxx0_SI_PIN, GPIO_MODE_OUT_PP_HIGH_FAST);
-    GPIO_Init(CCxxx0_SO_PORT, CCxxx0_SO_PIN, GPIO_MODE_IN_PU_NO_IT);
-    GPIO_Init(CCxxx0_GDO0_PORT, CCxxx0_GDO0_PIN, GPIO_MODE_IN_PU_IT);
-    GPIO_Init(CCxxx0_GDO2_PORT, CCxxx0_GDO2_PIN, GPIO_MODE_IN_PU_NO_IT);
-    EXTI_SetExtIntSensitivity(CCxxx0_GDO0_IPORT, EXTI_SENSITIVITY_RISE_FALL);*/  
-		GPIO_InitTypeDef   GPIO_InitStructure; 
-		EXTI_InitTypeDef   EXTI_InitStructure;  
-		NVIC_InitTypeDef   NVIC_InitStructure; 	
-		u8 temp =0 ;
-	
-      RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA, ENABLE);  //开启IO 时钟   	
-		/* Configure PA.00 pin as input floating */   
-	  GPIO_InitStructure.GPIO_Pin = CCxxx0_CS_PIN;     //设置IO模式   
-	  GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;   
-	  GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;	
-	  GPIO_Init(CCxxx0_CS_PORT, &GPIO_InitStructure);  
-	
-	  GPIO_InitStructure.GPIO_Pin = CCxxx0_SCK_PIN;     //设置IO模式  
-	  GPIO_Init(CCxxx0_SCK_PORT, &GPIO_InitStructure);
-	
-	  GPIO_InitStructure.GPIO_Pin = CCxxx0_SI_PIN;     //设置IO模式  
-	  GPIO_Init(CCxxx0_SI_PORT, &GPIO_InitStructure);
-	
-	  GPIO_InitStructure.GPIO_Pin = CCxxx0_SO_PIN;     //设置IO模式  
-		GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IN_FLOATING;   
-	  GPIO_Init(CCxxx0_SO_PORT, &GPIO_InitStructure);
-	  
-		GPIO_InitStructure.GPIO_Pin = CCxxx0_GDO0_PIN;     //设置IO模式  
-	  GPIO_Init(CCxxx0_GDO0_PORT, &GPIO_InitStructure);
-		
-		GPIO_InitStructure.GPIO_Pin = CCxxx0_GDO2_PIN;     //设置IO模式   
-		GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IN_FLOATING;    //必须要上拉
-		GPIO_Init(CCxxx0_GDO2_PORT, &GPIO_InitStructure);   
-		
 
-	
-		/* Connect EXTI0 Line to PA.00 pin */    
-		GPIO_EXTILineConfig(GPIO_PortSourceGPIOB, GPIO_PinSource11); //设定外设中断线。
-		
-
-		EXTI_ClearITPendingBit(EXTI_Line11);       //清除线路挂起位  
-	/* Configure EXTI0 line */    
-		EXTI_InitStructure.EXTI_Line = EXTI_Line11;     //设置中断类型   
-		EXTI_InitStructure.EXTI_Mode = EXTI_Mode_Interrupt;    
-		EXTI_InitStructure.EXTI_Trigger = EXTI_Trigger_Rising_Falling;    //上升沿触发   
-		EXTI_InitStructure.EXTI_LineCmd = ENABLE;   
-		EXTI_Init(&EXTI_InitStructure); 
-		
-		
-		/* Enable and set EXTI0 Interrupt to the lowest priority */   
-		NVIC_InitStructure.NVIC_IRQChannel = EXTI15_10_IRQn;      //设置中断优先级    
-		NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 1;   
-		NVIC_InitStructure.NVIC_IRQChannelSubPriority = 2;   
-		NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;   
-		NVIC_Init(&NVIC_InitStructure);
-	
-	    cc1100_PowerUp_Reset();
-	    cc1100_WriteSettings(&cc1100_Settings);
-	    cc1100_WriteReg(CCxxx0_PATABLE, paTable);
 }
 
 /*********************************************************************

@@ -30,21 +30,30 @@
 #include "433RF.h"
 #include "led.h"
 
-extern m2w_mcuStatus							m_m2w_mcuStatus;
-extern uint8_t 										uart_buf[]; 
-extern uint8_t 										uart_Count;
-extern uint8_t 										cmd_flag ;
-extern uint8_t 										cmd_len ;
-extern uint8_t 										wait_ack_time;
-//extern uint8_t 										check_status_time;
-extern uint8_t										report_status_idle_time;
-extern uint16_t 									Key_Return;           						//按键返回值
-extern uint8_t 										cmd_flag1, cmd_flag2;
-extern uint8_t                    wifi_status;
+extern m2w_mcuStatus			m_m2w_mcuStatus;
+extern uint8_t 					uart_buf[]; 
+extern uint8_t 					uart_Count;
+extern uint8_t 					cmd_flag ;
+extern uint8_t 					cmd_len ;
+extern uint8_t 					wait_ack_time;
+//extern uint8_t 				check_status_time;
+extern uint8_t					report_status_idle_time;
+extern uint16_t 				Key_Return;           						//按键返回值
+extern uint8_t 					cmd_flag1, cmd_flag2;
+extern uint8_t                  wifi_status;
+extern uint8_t                  LEDGroup_Status;
+extern uint16_t 				LEDGroup_Wait_Status;
+extern uint8_t					LEDGroup_MatchCode_Status;
+
+#include "ucos_ii.h"
 
 extern INT8U err;
 
 extern uint8_t get_one_package;
+extern volatile uint8_t  rf_inquire_flag;
+extern OS_EVENT  *message_event,*rf_receive_event;
+
+
 /** @addtogroup Template_Project
   * @{
   */
@@ -178,20 +187,23 @@ void SysTick_Handler(void)
 /*  file (startup_stm32f10x_xx.s).                                            */
 /***ev;i***********************************************************************/
 
+
 void USART1_IRQHandler(void)
 {  
 	uint8_t 	vlue;
 	short			i;
 	
-//	 OS_CPU_SR  cpu_sr;
+	 OS_CPU_SR  cpu_sr;
 
+   //OSIntEnter();
 
-//    OS_ENTER_CRITICAL();                         /* Tell uC/OS-II that we are starting an ISR          */
+   //OS_ENTER_CRITICAL();                         /* Tell uC/OS-II that we are starting an ISR          */
                   /* Tell uC/OS-II that we are starting an ISR          */
   if(USART_GetITStatus(USART1, USART_IT_RXNE) != RESET)
   { 
 		USART_ClearITPendingBit(USART1,USART_IT_RXNE);
 		vlue = USART_ReceiveData(USART1);
+		#if 0
 		if(get_one_package ==0)
 		{
 			if(cmd_flag1 ==0)
@@ -231,17 +243,56 @@ void USART1_IRQHandler(void)
 			}
 			if(uart_Count ==  (cmd_len + 4))
 			{
-				get_one_package = 1;
-			//	OSSemPost(message_event);
-			//	OSSemSet (message_event,1,&err);
+				get_one_package = 1;				
+				//OSSemPost(message_event);
 				cmd_flag1 = 0;
-			//	OSIntExit();	
 			}														
 		}
+		#else
+		if(get_one_package ==0)
+		{
+			uart_buf[uart_Count] = vlue;
+
+			if(vlue == 0xff)
+			{
+				cmd_flag1++;							
+			}	
+			else
+			{
+				cmd_flag1 = 0;
+			}
+			
+			if(cmd_flag1==2)
+			{
+				uart_buf[0]=0xff;
+				uart_buf[1]=0xff;
+				uart_Count=1;
+				cmd_flag1 = 0;
+			}
+			
+			
+			if(uart_Count >=4 && uart_buf[uart_Count] == 0x55 && uart_buf[uart_Count-1] == 0xFF){}
+			else uart_Count++;
+
+			if(uart_Count==256)
+				uart_Count=0;
+			
+			if(uart_Count == 0x04)
+			{
+				cmd_len = uart_buf[2]*256 +  uart_buf[3]; 															
+			}
+			if(uart_Count ==  (cmd_len + 4))
+			{
+				get_one_package = 1;				
+				//OSSemPost(message_event);
+			}														
+		}
+		#endif
 
   }
 	
 	//OS_EXIT_CRITICAL();
+	//OSIntExit();
 }
 
 /******************************************************************************/
@@ -264,8 +315,13 @@ void TIM3_IRQHandler(void)
 		wait_ack_time++;
 //		check_status_time++;
 		report_status_idle_time++;
-		
-		if(wifi_status == 0x01)     															//配置状态
+#if 1
+		if(LEDGroup_Status)
+		{
+			LEDGroup_Wait_Status++;
+		}
+#endif	
+		if(wifi_status == 0x01)     	//配置状态
 		{
 			if(time++ > 50)
 			{
@@ -282,7 +338,7 @@ void TIM3_IRQHandler(void)
 				}
 			}
 		}		
-    if(wifi_status == 0x02)     															//配置状态
+    if(wifi_status == 0x02)     	//重置WiFi模块
 		{
 			if(time++ > 10)
 			{
@@ -298,7 +354,9 @@ void TIM3_IRQHandler(void)
 						flag = 1;
 				}
 			}
-		}			
+		}	
+	
+		
 		Key_Press  =	Get_Key();	
 
 		switch (Key_State)
@@ -321,14 +379,13 @@ void TIM3_IRQHandler(void)
 					Key_State = 0;
 				}
 				break;
-				case 2:
+			case 2:
 				if(Key_Press == NO_KEY )											//按键释放了 
 				{
 					Key_State = 0;
 					Key_Delay = 0; 
 					Key_Series  = FALSE;
 					Key_Return  = KEY_UP | Key_Prev;      			//返回按键抬起值
-				//	OSSemPost(message_event);
 					break;
 				}	
 				if ( Key_Press ==Key_Prev )
@@ -338,7 +395,6 @@ void TIM3_IRQHandler(void)
 					{               
 						Key_Delay  = 0;                  
 						Key_Return = KEY_LONG | Key_Prev;   			//返回长按后的值 	
-			//			OSSemPost(message_event);			
 						break; 
 					}
 				}
@@ -359,216 +415,276 @@ void TIM2_IRQHandler(void)
 	static u8 j = 0;
 	static u8 flag = 1;
 	static u8 rf_fix_data = 0xaa;
-//	 OS_CPU_SR  cpu_sr;
-
-//	 OS_ENTER_CRITICAL();  	
+	 OS_CPU_SR  cpu_sr;
+	 
+	OSIntEnter();
+	OS_ENTER_CRITICAL();  	
 	if (TIM_GetITStatus(TIM2, TIM_IT_Update) != RESET)  //检查TIM3更新中断发生与否
 	{
 		TIM_ClearITPendingBit(TIM2, TIM_IT_Update );  		//清除TIMx更新中断标志 
-		if(m_rf_send.flag)
+		if(rf_state==RF_SEND_STATE)
 		{
-			if(m_rf_send.flag & RFSTART0)
+			if(m_rf_send.flag)
 			{
-				RF_CLR_DATA;
-				TIM_SetCounter(TIM2,65536-A124);
-				m_rf_send.flag = RFSTART1;
-				i = 0;
-				j = 0;
-				flag = 1;
+				if(m_rf_send.flag & RFSTART0)
+				{
+					RF_CLR_DATA;
+					TIM_SetCounter(TIM2,65536-A124);
+					m_rf_send.flag = RFSTART1;
+					i = 0;
+					j = 0;
+					flag = 1;
+				}
+				else 
+				{
+				   	RF_SET_DATA;
+					TIM_SetCounter(TIM2,65536-1000);
+					m_rf_send.flag = 0;
+				}
+			}
+			else  if(m_rf_send.frequency >= RFSENDRFQUENCY)
+			{
+						RF_CLR_DATA;
+						rf_state = RF_RECEIVE_STATE;	
+						TIM_SetCounter(TIM2,65536-3000);
 			}
 			else 
 			{
-			    RF_SET_DATA;
-				TIM_SetCounter(TIM2,65536-A4);
-				m_rf_send.flag = 0;
-			}
-		}
-		else  if(m_rf_send.frequency >= RFSENDRFQUENCY)
-		{
-					TIM_Cmd(TIM2, DISABLE);
-					RF_CLR_DATA;
-					rf_state = 0;
-		}
-		else 
-		{
-		    if(i < m_rf_send.data_len)
-			{
-			  	if((m_rf_send.data[i]>>j)&0x01)
+			
+			    if(i < m_rf_send.data_len)
 				{
-				    if(flag)
+				  	if((m_rf_send.data[i]>>j)&0x01)// 1
 					{
-					    RF_CLR_DATA;
-						TIM_SetCounter(TIM2,65536-A4);	
-						flag = 0;
-					}
-					else
-					{
-						RF_SET_DATA;
-						TIM_SetCounter(TIM2,65536-A12);
-						j++;
-						flag = 1;
-					}
-  
-				}
-				else
-				{
-					if(flag)
-					{
-					    RF_CLR_DATA;
-						TIM_SetCounter(TIM2,65536-A12);	
-						flag = 0;
-					}
-					else
-					{
-						RF_SET_DATA;
-						TIM_SetCounter(TIM2,65536-A4);
-						j++;
-						flag = 1;
-					}
-				}
-		}
-		/*	else
-			{
-                if(m_rf_send.remote_flag)
-				{
-					  if((rf_fix_data>>j)&0x01)
+					    if(flag)
 						{
-						    if(flag)
-							{
-							    RF_CLR_DATA;
-								TIM_SetCounter(TIM2,65536-A4);	
-								flag = 0;
-							}
-							else
-							{
-								RF_SET_DATA;
-								TIM_SetCounter(TIM2,65536-A12);
-								j++;
-								flag = 1;
-							}
-		  
+						    RF_CLR_DATA;
+							TIM_SetCounter(TIM2,65536-A4);	
+							flag = 0;
 						}
 						else
 						{
-							if(flag)
-							{
-							    RF_CLR_DATA;
-								TIM_SetCounter(TIM2,65536-A12);	
-								flag = 0;
-							}
-							else
-							{
-								RF_SET_DATA;
-								TIM_SetCounter(TIM2,65536-A4);
-								j++;
-								flag = 1;
-							}
+							RF_SET_DATA;
+							TIM_SetCounter(TIM2,65536-A12);
+							j++;
+							flag = 1;
 						}
-						if(j==4)
+	  
+					}
+					else// 0
+					{
+						if(flag)
 						{
-						   	m_rf_send.frequency++;
-							m_rf_send.flag = RFSTART0;
+						    RF_CLR_DATA;
+							TIM_SetCounter(TIM2,65536-A12);	
+							flag = 0;
 						}
-				 }
+						else
+						{
+							RF_SET_DATA;
+							TIM_SetCounter(TIM2,65536-A4);
+							j++;
+							flag = 1;
+						}
+					}
+				}
 
-
-			}	   */
-			if(j == 8)
-			{
-				j = 0;
-				i++;
+				if(j == 8)
+				{
+					j = 0;
+					i++;
+				}
+				if(i >= m_rf_send.data_len)
+				{
+					 m_rf_send.frequency++;
+					 m_rf_send.flag = RFSTART0;
+				}		
 			}
-			if(i >= m_rf_send.data_len)
-			{
-				 m_rf_send.frequency++;
-				 m_rf_send.flag = RFSTART0;
-			}			
+		}
+		else if(rf_state == RF_RECEIVE_STATE)
+		{
+			TIM_Cmd(TIM2, DISABLE);
+			TIM_Cmd(TIM4, ENABLE);
+			NVIC->ISER[40 >> 0x05] = (uint32_t)0x01 << (40 & (uint8_t)0x1F);
 		}
 //		IRstudyfinsh();		   //红外接收结束程序
 
 	}
-	// OS_EXIT_CRITICAL();
+	OS_EXIT_CRITICAL();
+	OSIntExit(); 
 }
 
 void TIM4_IRQHandler(void)   				
 {
-//	OS_CPU_SR  cpu_sr;
-
-//	 OS_ENTER_CRITICAL();  		
+	static u8 typ=0;		
 	if (TIM_GetITStatus(TIM4, TIM_IT_Update) != RESET)  //检查TIM3更新中断发生与否										      
 	{
 		TIM_ClearITPendingBit(TIM4, TIM_IT_Update );  		//清除TIMx更新中断标志 
-		TIM_Cmd(TIM4, DISABLE);
-	//	m_rf_receive.flag = 0;
-	}
-//	OS_EXIT_CRITICAL();
-}
- 
-void EXTI9_5_IRQHandler(void) 
-{
-  static u16 time_l = 0;
-	static u16 time_h = 0; 
-	
-//	OS_CPU_SR  cpu_sr;
-
-//	 OS_ENTER_CRITICAL();  	
-	EXTI->EMR &= (uint32_t)~(1<<1);   									//屏蔽中断事件
-	EXTI_ClearITPendingBit(EXTI_Line8);
-	
-	if(GPIO_ReadInputDataBit(RF_DATA_PORT,RF_RECEIVE_PIN) == 1)
-	{
-	    time_l = TIM_GetCounter(TIM4);
-		TIM_SetCounter(TIM4,0);	
-	}    
-	else
-	{
-	    time_h =  TIM_GetCounter(TIM4);
-		TIM_SetCounter(TIM4,0);
-
-		if(time_l > RFDATA0_L_TIME && time_l < RFDATA0_H_TIME)
+		if(typ)
 		{
-			m_rf_receive.data[m_rf_receive.data_len/8] &= 0x7f;
-			m_rf_receive.data_len++;	
-			m_rf_receive.data[m_rf_receive.data_len/8] = m_rf_receive.data[m_rf_receive.data_len/8]>>1;		
-		}
-		else if(time_l > RFDATA1_L_TIME && time_l < RFDATA1_H_TIME)
-		{
-		    m_rf_receive.data[m_rf_receive.data_len/8] |= 0x80;
-			m_rf_receive.data_len++;
-			m_rf_receive.data[m_rf_receive.data_len/8] = m_rf_receive.data[m_rf_receive.data_len/8]>>1;
-		}
-		else if(time_l > RFSTART_L_TIME && time_l < RFSTART_H_TIME)
-		{
-		    if(/*crc8_check(&m_rf_receive.data[0], m_rf_receive.data_len/8-1 ) == m_rf_receive.data[m_rf_receive.data_len/8-1] &&*/ m_rf_receive.data_len != 0)
-			{
-				if(crc8_check(&m_rf_receive.data[0], m_rf_receive.data_len/8-1 ) == m_rf_receive.data[m_rf_receive.data_len/8-1])
-				{
-//					OSSemPost(rf_receive_event);
-						rf_state = RF_RECEIVE_FINSH;
-						TIM_Cmd(TIM4, DISABLE);
-						NVIC->ICER[23 >> 0x05] =  (uint32_t)0x01 << (23 & (uint8_t)0x1F);
-				}
-			}
-			else
-			{
-			    m_rf_receive.data_len = 0;
-					memset(m_rf_receive.data, 0, RFDATALEN); 
-			}  
-
+			//RF_CLR_DATA;
+			typ=0;
 		}
 		else
 		{
-			 	rf_state = 0;
-			    TIM_Cmd(TIM4, DISABLE);
-				NVIC->ICER[23 >> 0x05] =  (uint32_t)0x01 << (23 & (uint8_t)0x1F);
-		}	
-		time_l = 0;
-		time_h = 0;
-	}    
-	EXTI->EMR |= (uint32_t)(1<<1);  										//开启中断事件  
-//	OS_EXIT_CRITICAL();
+			//RF_SET_DATA;
+			typ=1;
+		}
+
+
+	}
+}
+ 
+
+ 
+ void EXTI15_10_IRQHandler(void) 
+{
+	 static u16 time_l = 0;
+	 static u16 time_h = 0,tmp=0; 
+	 u8 buf[3]={0xBB,0xBB};
+	 OS_CPU_SR	cpu_sr;
+ 
+	 OSIntEnter();
+	 OS_ENTER_CRITICAL();	 
+	 //EXTI->EMR &= (uint32_t)~(1<<1);										 //?á±??D??ê??t
+	 EXTI_ClearITPendingBit(EXTI_Line11);
+	 #if 1	
+	 if(GPIO_ReadInputDataBit(RF_RECDATA_PORT,RF_RECEIVE_PIN) == 0)
+	 {
+		 time_h = TIM_GetCounter(TIM4);
+		 TIM_SetCounter(TIM4,0); 
+	 }	  
+	 else
+	 {
+		 time_l =  TIM_GetCounter(TIM4);
+		 TIM_SetCounter(TIM4,0);
+	 
+		 if((time_l > RFDATA0_L_TIME) && (time_l < RFDATA0_H_TIME))
+		 {
+			 m_rf_receive.data[m_rf_receive.data_len/8] &= 0x7f;
+			 m_rf_receive.data_len++;	 
+			 m_rf_receive.data[m_rf_receive.data_len/8] = m_rf_receive.data[m_rf_receive.data_len/8]>>1;	 
+		 }
+		 else if((time_l > RFDATA1_L_TIME) && (time_l < RFDATA1_H_TIME))
+		 {
+			 m_rf_receive.data[m_rf_receive.data_len/8] |= 0x80;
+			 m_rf_receive.data_len++;
+			 m_rf_receive.data[m_rf_receive.data_len/8] = m_rf_receive.data[m_rf_receive.data_len/8]>>1;
+		 }
+		 else if((time_l > RFSTART_L_TIME )&& (time_l < RFSTART_H_TIME))
+		 {
+			 if((crc8_check(&m_rf_receive.data[0],m_rf_receive.data_len/8-1 )==m_rf_receive.data[m_rf_receive.data_len/8-1])&&(m_rf_receive.data_len!=0))
+			 {
+				 rf_state = RF_RECEIVE_FINSH;
+				 TIM_Cmd(TIM4, DISABLE);
+				 NVIC->ICER[40 >> 0x05] =  (uint32_t)0x01 << (40 & (uint8_t)0x1F);
+				 OSSemPost(rf_receive_event);
+			 }
+			 else
+			 {
+				 m_rf_receive.data_len = 0;
+				 memset(m_rf_receive.data, 0, RFDATALEN); 
+			 }	
+		 }
+		 else
+		 {
+		 
+			 if(tmp==20)
+			 {
+				 tmp=0;
+				// rf_state = 0;
+				// TIM_Cmd(TIM4, DISABLE);
+				// NVIC->ICER[40 >> 0x05] =  (uint32_t)0x01 << (40 & (uint8_t)0x1F);
+			 }
+			 tmp++;
+		 }	 
+		 time_l = 0;
+		 time_h = 0;
+		 if(m_rf_receive.data_len==159)
+		 {
+		 	m_rf_receive.data_len=0;
+		 }
+	 } 
+	 #endif
+	 //EXTI->EMR |= (uint32_t)(1<<1);										 //?a???D??ê??t  
+	 OS_EXIT_CRITICAL();
+	 OSIntExit(); 
+
 }
 
+#if 0
+void EXTI9_5_IRQHandler(void) 
+{
+	 static u16 time_l = 0;
+	 static u16 time_h = 0,tmp=0; 
+	 u8 buf[3]={0xBB,0xBB};
+	 OS_CPU_SR	cpu_sr;
+	 
+	 //OSIntEnter();
+	  OS_ENTER_CRITICAL();	 
+	 //EXTI->EMR &= (uint32_t)~(1<<1);										 //?á±??D??ê??t
+	 
+	 if(GPIO_ReadInputDataBit(RF_RECDATA_PORT,RF_RECEIVE_PIN) == 0)
+	 {
+		 time_h = TIM_GetCounter(TIM4);
+		 TIM_SetCounter(TIM4,0); 
+	 }	  
+	 else
+	 {
+		 time_l =  TIM_GetCounter(TIM4);
+		 TIM_SetCounter(TIM4,0);
+	 
+		 if((time_l > RFDATA0_L_TIME) && (time_l < RFDATA0_H_TIME))
+		 {
+			 m_rf_receive.data[m_rf_receive.data_len/8] &= 0x7f;
+			 m_rf_receive.data_len++;	 
+			 m_rf_receive.data[m_rf_receive.data_len/8] = m_rf_receive.data[m_rf_receive.data_len/8]>>1;	 
+		 }
+		 else if((time_l > RFDATA1_L_TIME) && (time_l < RFDATA1_H_TIME))
+		 {
+			 m_rf_receive.data[m_rf_receive.data_len/8] |= 0x80;
+			 m_rf_receive.data_len++;
+			 m_rf_receive.data[m_rf_receive.data_len/8] = m_rf_receive.data[m_rf_receive.data_len/8]>>1;
+		 }
+		 else if((time_l > RFSTART_L_TIME )&& (time_l < RFSTART_H_TIME))
+		 {
+			 if((crc8_check(&m_rf_receive.data[0],m_rf_receive.data_len/8-1 )==m_rf_receive.data[m_rf_receive.data_len/8-1])&&(m_rf_receive.data_len!=0))
+			 {
+				 rf_state = RF_RECEIVE_FINSH;
+				 TIM_Cmd(TIM4, DISABLE);
+				 NVIC->ICER[23 >> 0x05] =  (uint32_t)0x01 << (23 & (uint8_t)0x1F);
+			 }
+			 else
+			 {
+				 m_rf_receive.data_len = 0;
+				 memset(m_rf_receive.data, 0, RFDATALEN); 
+			 }	
+		 }
+		 else
+		 {
+		 
+			 if(tmp==20)
+			 {
+				 tmp=0;
+				 rf_state = 0;
+				 TIM_Cmd(TIM4, DISABLE);
+				 NVIC->ICER[23>> 0x05] =  (uint32_t)0x01 << (23 & (uint8_t)0x1F);
+			 }
+			 tmp++;
+		 }	 
+		 time_l = 0;
+		 time_h = 0;
+		 if(m_rf_receive.data_len==159)
+		 {
+		 	m_rf_receive.data_len=0;
+		 }
+	 } 
+	 EXTI_ClearITPendingBit(EXTI_Line8);
+	 //EXTI->EMR |= (uint32_t)(1<<1);										 //?a???D??ê??t  
+	 OS_EXIT_CRITICAL();
+	 //OSIntExit(); 
+
+}
+#endif
 /*
 void EXTI15_10_IRQHandler(void) 
 {

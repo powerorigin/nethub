@@ -25,7 +25,24 @@
 u8 Lt8900_Rxdata[DATALEN];
 u8 Lt8900_Txdata[DATALEN];
 
+u8 LEDFlag[10];		//当前LED的控制状态
+u8 RetryFlag; 
+u8 flag1,flag2,flag3;
+
+extern OS_EVENT  *LT8900_Event;
+
+#define unLT8900lock() OSSemPost(LT8900_Event);
+#define LT8900lock() OSSemPend(LT8900_Event,0,&err);
+
+
 extern m2w_mcuStatus							m_m2w_mcuStatus;
+extern w2m_controlMcu							m_w2m_controlMcu;
+
+extern uint8_t                   LEDGroup_Status;
+extern uint16_t				  LEDGroup_Wait_Status;
+extern uint8_t				  LEDGroup_MatchCode_Status;
+extern uint8_t 						wait_ack_time;
+
 
 extern void delay_us(uint32_t nus);
 extern uint8_t crc8_check(uint8_t *ptr,uint8_t len);
@@ -86,69 +103,172 @@ void LT_init()
 
 void LT_TxData()
 {
-	u8 i;
+	u8 i,err,buf[2]={0xEE,0xEE};
 	u16 time = 20000;
-	
+#if 1	
+	flag3++;
+
 	Lt8900_Txdata[5] = crc8_check(Lt8900_Txdata,5);
+	UART1_SendBuf_DATA(buf,2);
+	UART1_SendBuf_DATA(Lt8900_Txdata,SEND_DATA_LEN);
+	UART1_SendBuf_DATA(buf,2);
 	LT_writereg(7,0x00,0x00);	
-	LT_writereg(52,0x80,0x80);
+	LT_writereg(52,0x80,0x00);//清空收发FIFO中的数据及指针
 	SS_L();	
-	SPI_write_byte(50);	
+	SPI_write_byte(0x7f&50);	
 	SPI_write_byte(SEND_DATA_LEN+1);
-			
+				
 	for(i=0;i<SEND_DATA_LEN;i++)
 	{
 		SPI_write_byte(Lt8900_Txdata[i]);
 	}
 	SS_H();
 	LT_writereg(7,0x01,0x00);			 			//发送模式
-	
-  while(READ_PKT==0&&time--);
-	
-	delay_us(2000);	
-	LT_writereg(52,0x80,0x80);
+	while(READ_PKT==0&&time--);
+#if 0	
+			TIM_SetCounter(TIM3,0);
+			LEDGroup_Wait_Status=TIM_GetCounter(TIM3);
+			UART1_SendBuf_DATA((u8*)&LEDGroup_Wait_Status,1);
+			wait_ack_time=0;
+#endif
+	LEDGroup_Wait_Status=0;
+	//delay_us(2000);	
+	flag2++;
+	OSTimeDlyHMSM(0,0,0,2); 	//2ms延时，释放CPU控制权	
+	LT_writereg(7,0x00,0x00);
+	LT_writereg(52,0x00,0x80);
 	LT_writereg(7,0x00,0x80);					    //接收模式
+#endif
 }
 
 void LT_RxData()
 {
-	u8 i,data_len;
+	u8 i,data_len,err,buf[2]={0xDD,0xDD},BUF[3]={0},buf2[2]={0xBB,0xBB};
+	u16 data;
 	//LT_readreg(48);
 	if(READ_PKT)	
 	{
 		SS_L();
 		SPI_write_byte(0x80+50);           
-		data_len = SPI_write_byte(0xff);
+		data_len = SPI_write_byte(0xff)-1;
 		for(i=0;i<data_len;i++)
 		{
-				Lt8900_Rxdata[i] = SPI_write_byte(0xff); 			    
+			Lt8900_Rxdata[i] = SPI_write_byte(0xff); 			    
 		}	
-    SS_H();
-		if(Lt8900_Rxdata[0] == LT8900_DATA && Lt8900_Rxdata[data_len-2] == crc8_check(Lt8900_Rxdata,data_len-2))
-		{
-			  if(Lt8900_Rxdata[CMD] == 0x01)
-			 	{
-						for(i=0;i<MAX_DEVICE_NUMBER;i++)
-						{
-								 	if(rf_device_list[i][CLASS] == 0 || rf_device_list[i][ID] == Lt8900_Rxdata[ID]|| (rf_device_list[i][ID] == Lt8900_Rxdata[ID]&&rf_device_list[i][CLASS] == Lt8900_Rxdata[CLASS]))
-									   break;
-					  }
-					 if(rf_device_list[i][CLASS] == 0 || rf_device_list[i][ID] == 0)
-					 {
-									 rf_device_list[i][CLASS] = Lt8900_Rxdata[CLASS];
-									 rf_device_list[i][ID] = Lt8900_Rxdata[ID];			
-									 AT24CXX_Write(AT24CXX_DEVICE_LIST_ADDR,(u8 *)rf_device_list,sizeof(rf_device_list));									 
-								//	 rf_device_list[i][LIST_STATE] = 1;
-				   }
-					 else Lt8900_Rxdata[ID] = 0;
-				}
-		}
-		memcpy(&m_m2w_mcuStatus.status_w,&Lt8900_Rxdata[0],6);
-		ReportStatus(REPORT_STATUS);
+	    SS_H();		
+
 		LT_writereg(7,0x00,0x00);	
-		LT_writereg(52,0x80,0x80);
-		LT_writereg(7,0x00,0x80);	
-	
+		LT_writereg(52,0x00,0x80);
+		LT_writereg(7,0x00,0x80);
+		#if 0
+		UART1_SendBuf_DATA(buf2,2);
+		LEDGroup_Wait_Status=TIM_GetCounter(TIM3)+wait_ack_time*100-LEDGroup_Wait_Status;		
+		BUF[0]=LEDGroup_Wait_Status;
+		BUF[1]=LEDGroup_Wait_Status>>8;
+		UART1_SendBuf_DATA(BUF,2);
+		UART1_SendBuf_DATA(buf2,2);
+		#endif
+
+		UART1_SendBuf_DATA(buf,2);
+		UART1_SendBuf_DATA(Lt8900_Rxdata,data_len);
+		UART1_SendBuf_DATA(buf,2);
+
+	#if 1	
+		if((Lt8900_Rxdata[0]==Lt8900_Txdata[0])&&(Lt8900_Rxdata[1]==Lt8900_Txdata[1]))
+		{
+			if((m_w2m_controlMcu.status_w.device_cmd&GROUP_CONTROL_CMD)==GROUP_CONTROL_CMD)
+			{	
+				if((m_w2m_controlMcu.status_w.device_cmd&0x0f)==MATCODE_CONTROL_CMD)
+				{
+					LEDGroup_Wait_Status=0;		
+					LEDGroup_Status=0;
+					Set_LEDStatus(Lt8900_Rxdata,MATCODE_CONTROL_CMD);
+					Lt8900_Rxdata[ID]=m_w2m_controlMcu.status_w.device_id;
+				}
+				else if((m_w2m_controlMcu.status_w.device_cmd&0x0f)==READ_CONTROL_CMD)
+				{
+				}
+				else if((m_w2m_controlMcu.status_w.device_cmd&0x0f)==WRITE_CONTROL_CMD)
+				{
+				#if 1
+					LEDFlag[LEDGroup_MatchCode_Status]=1;
+					LEDGroup_Wait_Status=0;
+
+					if(LEDGroup_Status==WRITE_CONTROL_CMD)
+					{
+						return;
+					}
+
+				#endif
+				}
+			}			
+		}
+	#endif
+		memcpy(&m_m2w_mcuStatus.status_w,&m_w2m_controlMcu.status_w,6);
+		flag1--;
+		flag2--;
+		flag3--;
+		ReportStatus(REPORT_STATUS);
 	}
-	
+
 }
+void LT_RetryData(void)
+{
+	static u8 Retry;
+	if(LEDGroup_Status)
+	{
+		if(LEDGroup_Status==MATCODE_CONTROL_CMD)
+		{
+			if(LEDGroup_Wait_Status>1)
+			{
+				LT_LEDStatus();
+			}
+			RetryFlag++;
+			if(RetryFlag==2)
+			{
+				LEDGroup_Status=0;
+				RetryFlag=0;
+			}
+		}
+		else if(LEDGroup_Status==READ_CONTROL_CMD)
+		{
+		}
+		else if(LEDGroup_Status==WRITE_CONTROL_CMD)
+		{
+#if 1			
+			if(LEDGroup_Wait_Status>1)
+			{
+				if(LEDFlag[LEDGroup_MatchCode_Status]==0)
+				{
+					Retry=1;
+				}
+				LEDGroup_MatchCode_Status++;
+				for(;LEDFlag[LEDGroup_MatchCode_Status]&&LEDGroup_MatchCode_Status<10;LEDGroup_MatchCode_Status++);				
+				LT_LEDStatus();
+			}
+			if(LEDGroup_Status==0)
+			{	
+				if(Retry==1&&RetryFlag<3)
+				{
+					LEDGroup_Status=WRITE_CONTROL_CMD;
+					LEDGroup_MatchCode_Status=0;
+					LEDGroup_Wait_Status=0;
+					RetryFlag++;
+					Retry=0;
+					for(;LEDFlag[LEDGroup_MatchCode_Status]&&LEDGroup_MatchCode_Status<10;LEDGroup_MatchCode_Status++);				
+					LT_LEDStatus();
+				}
+				else
+				{
+					Retry=0;
+					RetryFlag=0;
+					memset(LEDFlag,0,10);
+					memcpy(&m_m2w_mcuStatus.status_w,&m_w2m_controlMcu.status_w.device_cmd,6);
+					ReportStatus(REPORT_STATUS);
+				}
+			}
+#endif
+		}
+	}
+}
+

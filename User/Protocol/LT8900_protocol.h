@@ -9,6 +9,7 @@
 void LT_TxData();
 void LT_RxData();
 void LT_init();
+void LT_RetryData(void);
 
 extern uint8_t Lt8900_Rxdata[DATALEN];
 extern uint8_t Lt8900_Txdata[DATALEN];

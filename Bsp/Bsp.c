@@ -10,7 +10,7 @@ uint8_t 									check_status_time;
 uint8_t 									report_status_idle_time;
 uint32_t									SN;
 uint8_t 									cmd_flag1, cmd_flag2;
-uint32_t									wait_wifi_status;
+
 
 pro_commonCmd							m_pro_commonCmd;							//通用命令，心跳、ack等可以复用此帧
 m2w_returnMcuInfo					m_m2w_returnMcuInfo;					//返回mcu信息帧
@@ -24,29 +24,6 @@ pro_errorCmd							m_pro_errorCmd;								//错误命令帧
 static  void  BSP_LED_Init(void);
 //	static  void  BSP_KEY_Init (void); 
 
-void  BSP_Init (void)
-{
-	SystemInit();
-	UART_Configuration();	
-//	KEY_GPIO_Init();
-//	TIM3_Int_Init(100,7199);
-	
-
-	//应用初始化，包括电机、LED、温湿度、红外；
-//	Motor_Init();	
-//	RGB_LED_Init();
-//	LT8900IO_Init();
-//	LT_init();
-
-//	RF_Init();
-//	IrInit();
-//	DHT11_Init();
-//BSP_LED_Init();                 /* Initialize the LED  */
-//	Init_Uart_on_Chip(9600);
-//	BSP_KEY_Init();  
-//初始化各类型数据帧
-	McuStatusInit();
-}
 
 int	McuStatusInit()
 {
@@ -57,7 +34,6 @@ int	McuStatusInit()
 	uart_Count = 0;
 	cmd_flag = 0;
 	cmd_len = 0 ;	
-	wait_wifi_status = 0;
 	
 	memset(uart_buf, 0, 256);
 	

@@ -3,8 +3,9 @@
 
 #include <stm32f10x.h>
 #define RF_DATA_PIN	 		   GPIO_Pin_9
-#define RF_RECEIVE_PIN   	 GPIO_Pin_8
+#define RF_RECEIVE_PIN   	 GPIO_Pin_11
 #define RF_DATA_PORT 		   GPIOB
+#define RF_RECDATA_PORT 		   GPIOA
 #define RF_DATALEN    3
 
 
@@ -36,16 +37,16 @@
 
 
 #define RFDATALEN           20
-#define RFSENDRFQUENCY      8                         //发送次数
+#define RFSENDRFQUENCY      2                       //发送次数
 #define REMOTECONTROL       1                         //遥控器
 #define REMOTEDATALEN       4                         //遥控器数据长度
 
-#define RFSTART_L_TIME              5500
-#define RFSTART_H_TIME              6500
-#define RFDATA0_L_TIME              350
-#define RFDATA0_H_TIME              450
-#define RFDATA1_L_TIME              150
-#define RFDATA1_H_TIME              250 
+#define RFSTART_L_TIME              5400
+#define RFSTART_H_TIME              6400
+#define RFDATA0_L_TIME              320
+#define RFDATA0_H_TIME              500
+#define RFDATA1_L_TIME              80
+#define RFDATA1_H_TIME              320 
 
 #define MAX_SEND_NUM                3				 //RF重发次数
 typedef struct	_rf_send										rf_send;
@@ -78,6 +79,7 @@ void RF_Init(void);
 //void Wireless_control(uint8_t *data);
 void Rf_Receive(void);
 uint8_t crc8_check(uint8_t *ptr,uint8_t len);
+uint8_t crc8_433check(uint8_t *ptr);
 u8 Send_Byte(u8 send_data_len, u8 remote_control_flag, u8 send_frequency);
 
 #endif /*_HAL_433RF_H*/

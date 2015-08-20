@@ -24,8 +24,14 @@
 #include "ht138x.h"
 #include "24cxx.h" 
 
-uint8_t  rf_device_list[MAX_DEVICE_NUMBER][DEVICE_DATA_LEN];  //在线设备列表
 volatile uint8_t  rf_inquire_flag;                                     //反馈标志
+
+
+uint8_t  rf_device_list[MAX_DEVICE_NUMBER][DEVICE_DATA_LEN];  //在线设备列表
+
+volatile uint8_t  rf_inquire_flag;                                     //反馈标志
+//uint8_t  rf_inquire_flag;                                     //反馈标志
+
 uint8_t  temperature_humidity_new[2];						  //温湿度缓存
 uint8_t  temperature_humidity_old[2];
 
@@ -33,10 +39,11 @@ queue_t  rf_send_queue;
 
 extern m2w_mcuStatus							m_m2w_mcuStatus;
 extern 	OS_EVENT *rf_send_event;
+extern uint8_t Send_flag;
 
 void Rf_Data_Init(void)
 {
-	memset(rf_device_list,0,MAX_DEVICE_NUMBER);
+	memset(rf_device_list,0,sizeof(rf_device_list));
 	rf_inquire_flag = 0;
 }
 /*******************************************************************************
@@ -51,11 +58,13 @@ void Rf_Send_Process(uint8_t *data)
 {
 //	uint8_t str[20] = {'\0'};
   uint8_t i;
-	
+#if 1	
 	Push(&rf_send_queue, data);
+	if(m_rf_send.data[2]!=data[2]&&Send_flag)
+		Send_flag=2;
 
 	if(rf_send_event->OSEventCnt == 0 && rf_send_event->OSEventType == 0x03)
-  {
+  	{
 		OSSemPost(rf_send_event);
 	}
 	else
@@ -64,6 +73,12 @@ void Rf_Send_Process(uint8_t *data)
 		rf_send_event->OSEventType = 0x03;
 		OSSemPost(rf_send_event);
 	}
+#else
+	memcpy(m_rf_send.data,data,12);
+
+	OSSemPost(rf_send_event);
+
+#endif
 	
 //	Send_Byte(5,REMOTECONTROL,RFSENDRFQUENCY);
 
@@ -79,7 +94,7 @@ void Rf_Send_Process(uint8_t *data)
 void Host_Search_Device_Cmd(uint8_t *data)
 {
      uint8_t	i,j;
-   memcpy(&timer_tab.timermin,&data[3],6);	
+   	 memcpy(&timer_tab.timermin,&data[3],6);	
 	 Set_Timer();
 	 memcpy(&m_m2w_mcuStatus.status_w,data,3);
 	 memset(&m_m2w_mcuStatus.status_w.device_data,0,sizeof(m_m2w_mcuStatus.status_w.device_data));
@@ -89,12 +104,12 @@ void Host_Search_Device_Cmd(uint8_t *data)
 		 if(rf_device_list[i][CLASS] == 0 || rf_device_list[i][ID] == 0)
 			break; 
 		 if((i+1)%4 == 0)
-		{
-			j++;
-			memcpy(&m_m2w_mcuStatus.status_w.device_data[1],&rf_device_list[4*j-4],8);
-			ReportStatus(REPORT_STATUS);					
-			memset(&m_m2w_mcuStatus.status_w.device_data,0,sizeof(m_m2w_mcuStatus.status_w.device_data));			
-		}
+		 {
+			 j++;
+			 memcpy(&m_m2w_mcuStatus.status_w.device_data[1],&rf_device_list[4*j-4],8);
+			 ReportStatus(REPORT_STATUS);					
+			 memset(&m_m2w_mcuStatus.status_w.device_data,0,sizeof(m_m2w_mcuStatus.status_w.device_data));			
+		 }
 	 }
 	 m_m2w_mcuStatus.status_w.device_cmd = 0x06;                                              //搜索结束命令
 	 memcpy(&m_m2w_mcuStatus.status_w.device_data[1],&rf_device_list[4*j],(i%4)*2);
@@ -111,7 +126,7 @@ void Host_Search_Device_Cmd(uint8_t *data)
 void Host_Delete_Device_Cmd(uint8_t *data)
 {
 	uint8_t	i,j;
-  OS_CPU_SR  cpu_sr;
+ 	 OS_CPU_SR  cpu_sr;
 
 
     OS_ENTER_CRITICAL();                         /* Tell uC/OS-II that we are starting an ISR          */
@@ -130,7 +145,7 @@ void Host_Delete_Device_Cmd(uint8_t *data)
 	}
 	if(rf_device_list[i][CLASS] != 0 && rf_device_list[i][ID] != 0)
 	{	
-	  for(;i<j;i++)
+	  	for(;i<j;i++)
 		{
 			memcpy(&rf_device_list[i],&rf_device_list[i+1],2);	
 		}
@@ -140,7 +155,6 @@ void Host_Delete_Device_Cmd(uint8_t *data)
 	OS_EXIT_CRITICAL();
 	memcpy(&m_m2w_mcuStatus.status_w,data,6);
 	ReportStatus(REPORT_STATUS);
-	//sizeof(rf_device_list)
 }
 
 /*******************************************************************************
@@ -200,7 +214,7 @@ void Rf_Heart_package(void)
 	{
 		if(rf_device_list[i][CLASS] == RF_DATA && rf_device_list[i][ID] != 0)
 		{
-		   str[0] = rf_device_list[i][CLASS];
+		   	 str[0] = rf_device_list[i][CLASS];
 			 str[1] = rf_device_list[i][ID];
 			 str[2] = RF_HEART_CMD;
 			 str[3] = timer_tab.timermonth;
@@ -211,7 +225,6 @@ void Rf_Heart_package(void)
 		}
 		else 	break;
 	}
-	  
 }
 /*******************************************************************************
 * Function Name  :  Rf_Receive_Process
@@ -225,38 +238,42 @@ void Rf_Receive_Process(void)
 {
 	uint8_t	i;
 	OS_CPU_SR  cpu_sr;
-    
+     u8 buf[2]={0xAA,0xAA};
 	 if(memcmp(m_rf_send.data,m_rf_receive.data,3) == 0)
 	 {
-	   rf_inquire_flag = RF_INQUIRE_SUCCESS;
-		  OS_ENTER_CRITICAL();  
+	   	 rf_inquire_flag = RF_INQUIRE_SUCCESS;
+		 OS_ENTER_CRITICAL(); 
 		 switch(m_rf_receive.data[0])
 		 {
-		     case   RF_DATA: if(m_rf_receive.data[ID] != 0x00&&m_rf_receive.data[CMD] == RF_SET_CMD)
-			 				{
-								 for(i=0;i<MAX_DEVICE_NUMBER;i++)
-								 {
-								 	if(rf_device_list[i][CLASS] == 0 || rf_device_list[i][ID] == 0|| (rf_device_list[i][ID] == m_rf_receive.data[ID]&&rf_device_list[i][CLASS] == m_rf_receive.data[CLASS]))
-									   break;
-								 }
-								 if(rf_device_list[i][CLASS] == 0 || rf_device_list[i][ID] == 0)
-								 {
-									 rf_device_list[i][CLASS] = m_rf_receive.data[CLASS];
-									 rf_device_list[i][ID] = m_rf_receive.data[ID];			
-									 AT24CXX_Write(AT24CXX_DEVICE_LIST_ADDR,(u8 *)rf_device_list,sizeof(rf_device_list));									 
-								//	 rf_device_list[i][LIST_STATE] = 1;
-							 	 }
-								 else 	m_rf_receive.data[ID] = 0;
-							}
+		     case RF_DATA: 
+			 	if(m_rf_receive.data[ID] != 0x00&&m_rf_receive.data[CMD] == RF_SET_CMD)
+			 	{
+					for(i=0;i<MAX_DEVICE_NUMBER;i++)
+					{
+						if(rf_device_list[i][CLASS] == 0 || rf_device_list[i][ID] == 0|| (rf_device_list[i][ID] == m_rf_receive.data[ID]&&rf_device_list[i][CLASS] == m_rf_receive.data[CLASS]))
 							break;
+					}
+					if(rf_device_list[i][CLASS] == 0 || rf_device_list[i][ID] == 0)
+					{
+						rf_device_list[i][CLASS] = m_rf_receive.data[CLASS];
+						rf_device_list[i][ID] = m_rf_receive.data[ID];			
+						AT24CXX_Write(AT24CXX_DEVICE_LIST_ADDR,(u8 *)rf_device_list,sizeof(rf_device_list));									 
+					}
+					else 	m_rf_receive.data[ID] = 0;
+				}
+				break;
 		   default  : break;
-		 }
+		 }		
 		OS_EXIT_CRITICAL();
 		memcpy(&m_m2w_mcuStatus.status_w,&m_rf_receive.data[0],12);
-		ReportStatus(REPORT_STATUS);
-		OSTimeDlyHMSM(0,0,0,250); 	//等待200ms反馈
-		rf_state = 0;	
+		ReportStatus(REPORT_STATUS);		
 	}
+	UART1_SendBuf_DATA(buf,2);
+	UART1_SendBuf_DATA(m_rf_receive.data, m_rf_receive.data_len/8); 		
+	UART1_SendBuf_DATA(buf,2);
 	memset(m_rf_receive.data,0,sizeof(m_rf_receive.data));	
+	m_rf_receive.data_len = 0;
+	rf_state = 0;
+
 }
 
